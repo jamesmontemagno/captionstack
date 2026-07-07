@@ -1,4 +1,4 @@
-name: Deploy CaptionKit to GitHub Pages
+name: Deploy CaptionStack to GitHub Pages
 
 on:
   push:

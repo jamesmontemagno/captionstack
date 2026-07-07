@@ -1,6 +1,8 @@
-# CaptionKit
+# CaptionStack
 
-A private, browser-only subtitle converter. CaptionKit reads, previews, and converts caption files without uploading them to a server.
+A growing collection of private, browser-based caption tools. CaptionStack currently reads, previews, and converts caption files without uploading them to a server.
+
+**Live site:** [captionstack.app](https://captionstack.app/)
 
 ## Supported formats
 
@@ -31,6 +33,6 @@ Use `npm test`, `npm run lint`, and `npm run build` to validate changes.
 1. Push the project to a GitHub repository with `main` as its default branch.
 2. Open **Settings → Pages** in the repository.
 3. Set **Source** to **GitHub Actions**.
-4. Push to `main` or run **Deploy CaptionKit to GitHub Pages** from the Actions tab.
+4. Push to `main` or run **Deploy CaptionStack to GitHub Pages** from the Actions tab.
 
 The workflow tests and builds the app, then publishes the `dist` directory. Vite uses relative asset paths, so the site works at both account and repository Pages URLs.

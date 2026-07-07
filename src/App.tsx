@@ -140,9 +140,9 @@ function App() {
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="./" aria-label="CaptionKit home">
-          <span className="brand-mark" aria-hidden="true"><span>CC</span></span>
-          <span>CaptionKit</span>
+        <a className="brand" href="./" aria-label="CaptionStack home">
+          <span className="brand-mark" aria-hidden="true"><span>CS</span></span>
+          <span>CaptionStack</span>
         </a>
         <div className="header-actions">
           <span className="privacy-badge"><Icon name="shield" size={17} />Private by design</span>
@@ -197,7 +197,7 @@ function App() {
               />
               <div className="demo-row">
                 <span>Don’t have a file handy?</span>
-                <button type="button" onClick={() => processContent(DEMO_CAPTIONS, 'captionkit-demo.vtt', new Blob([DEMO_CAPTIONS]).size)}>Try a sample file</button>
+                <button type="button" onClick={() => processContent(DEMO_CAPTIONS, 'captionstack-demo.vtt', new Blob([DEMO_CAPTIONS]).size)}>Try a sample file</button>
               </div>
             </>
           ) : (
@@ -279,7 +279,7 @@ function App() {
         </section>
       </main>
 
-      <footer><span>CaptionKit</span><p>Fast, private caption conversion in your browser.</p></footer>
+      <footer><span>CaptionStack</span><p>Fast, private caption tools in your browser.</p></footer>
     </div>
   )
 }
