@@ -42,3 +42,7 @@ Use `npm test`, `npm run lint`, and `npm run build` to validate changes.
 4. Push to `main` or run **Deploy CaptionStack to GitHub Pages** from the Actions tab.
 
 The workflow tests and builds the app, then publishes the `dist` directory. Vite uses relative asset paths, so the site works at both account and repository Pages URLs.
+
+## License
+
+CaptionStack is available under the [MIT License](LICENSE).
