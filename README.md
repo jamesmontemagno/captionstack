@@ -1,5 +1,11 @@
 # CaptionStack
 
+<p align="center">
+  <a href="https://captionstack.app/">
+    <img src="public/social-card.png" alt="CaptionStack — Your captions. Any format." width="100%">
+  </a>
+</p>
+
 A growing collection of private, browser-based caption tools. CaptionStack currently reads, previews, and converts caption files without uploading them to a server.
 
 **Live site:** [captionstack.app](https://captionstack.app/)
