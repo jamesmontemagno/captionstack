@@ -607,6 +607,7 @@ h1 em {
 
 footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   max-width: 1160px;
   margin: 0 auto;
@@ -623,6 +624,19 @@ footer span {
 
 footer p {
   margin: 0;
+}
+
+footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cp-text);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+footer a:hover {
+  color: var(--cp-accent);
 }
 
 @media (max-width: 720px) {
@@ -701,6 +715,7 @@ footer p {
 
   footer {
     flex-direction: column;
+    align-items: flex-start;
     gap: 5px;
     padding: 22px 18px 28px;
   }
