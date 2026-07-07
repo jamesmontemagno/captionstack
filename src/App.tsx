@@ -23,6 +23,16 @@ Everything happens privately in your browser.
 00:00:08.700 --> 00:00:12.000
 Choose a format, then download.`
 
+function BrandIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="6" y="4" width="14" height="10" rx="2" />
+      <path d="M9 8h8M9 11h5" />
+      <path d="M6 9H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1" />
+    </svg>
+  )
+}
+
 function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset'; size?: number }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
@@ -141,7 +151,7 @@ function App() {
     <div className="app-shell">
       <header className="site-header">
         <a className="brand" href="./" aria-label="CaptionStack home">
-          <span className="brand-mark" aria-hidden="true"><span>CS</span></span>
+          <span className="brand-mark"><BrandIcon /></span>
           <span>CaptionStack</span>
         </a>
         <div className="header-actions">

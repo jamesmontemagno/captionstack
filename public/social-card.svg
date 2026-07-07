@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f7f4ef"/>
+  <rect x="72" y="70" width="1056" height="490" rx="32" fill="#ffffff" stroke="#dedede" stroke-width="2"/>
+  <g transform="translate(132 130)">
+    <rect width="96" height="96" rx="24" fill="#b11f4b"/>
+    <g transform="translate(18 17)" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="14" width="46" height="34" rx="7"/>
+      <path d="M25 13h24M25 23h15"/>
+      <path d="M14 17h-5a8 8 0 0 0-8 8v28a8 8 0 0 0 8 8h33a8 8 0 0 0 8-8v-7"/>
+    </g>
+  </g>
+  <text x="258" y="194" fill="#242424" font-family="Segoe UI, Aptos, Calibri, sans-serif" font-size="58" font-weight="700">CaptionStack</text>
+  <text x="132" y="338" fill="#242424" font-family="Segoe UI, Aptos, Calibri, sans-serif" font-size="76" font-weight="700" letter-spacing="-3">Your captions. Any format.</text>
+  <text x="132" y="422" fill="#5c5c5c" font-family="Segoe UI, Aptos, Calibri, sans-serif" font-size="32">Fast, private caption tools in your browser.</text>
+  <g transform="translate(132 482)" fill="#b11f4b" font-family="Consolas, Courier New, monospace" font-size="21" font-weight="700">
+    <text x="0">SRT</text><text x="90">VTT</text><text x="180">SBV</text><text x="270">LRC</text>
+    <text x="360">TTML</text><text x="470">JSON</text><text x="580">CSV</text><text x="660">TXT</text>
+  </g>
+</svg>

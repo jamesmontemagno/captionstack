@@ -1,0 +1,17 @@
+{
+  "name": "CaptionStack",
+  "short_name": "CaptionStack",
+  "description": "Fast, private caption tools in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f4ef",
+  "theme_color": "#b11f4b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

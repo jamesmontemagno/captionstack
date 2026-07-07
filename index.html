@@ -3,11 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Convert SRT, WebVTT, SBV, LRC, TTML, JSON, CSV, and text caption files privately in your browser." />
+    <meta name="description" content="Convert SRT, VTT, SBV, LRC, TTML, JSON, CSV, and TXT subtitle files instantly. Free, private, and entirely in your browser." />
     <meta name="application-name" content="CaptionStack" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta name="theme-color" content="#b11f4b" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CaptionStack" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content="https://captionstack.app/" />
+    <meta property="og:title" content="Free Subtitle Converter — SRT, VTT & More | CaptionStack" />
+    <meta property="og:description" content="Convert caption and subtitle files instantly without uploading them. Eight formats supported, entirely in your browser." />
+    <meta property="og:image" content="https://captionstack.app/social-card.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="CaptionStack — private caption tools for every format" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Free Subtitle Converter — SRT, VTT & More | CaptionStack" />
+    <meta name="twitter:description" content="Convert caption and subtitle files instantly without uploading them." />
+    <meta name="twitter:image" content="https://captionstack.app/social-card.png" />
+    <meta name="twitter:image:alt" content="CaptionStack — private caption tools for every format" />
     <link rel="canonical" href="https://captionstack.app/" />
-    <title>CaptionStack — Private subtitle tools</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <title>Free Subtitle Converter — SRT, VTT & More | CaptionStack</title>
     <script>
       (() => {
         const param = new URLSearchParams(window.location.search).get("scoutTheme");
@@ -16,9 +35,33 @@
         document.documentElement.setAttribute("data-theme", theme);
       })();
     </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "CaptionStack",
+        "url": "https://captionstack.app/",
+        "description": "A private, browser-based converter for caption and subtitle files.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript and a modern web browser.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Convert SRT subtitle files",
+          "Convert WebVTT caption files",
+          "Convert SBV, LRC, TTML, JSON, CSV, and TXT files",
+          "Process files privately in the browser"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>CaptionStack is a free, private subtitle converter for SRT, VTT, SBV, LRC, TTML, JSON, CSV, and TXT files. JavaScript is required to convert files in your browser.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
