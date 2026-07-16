@@ -573,6 +573,177 @@ h1 em {
   background: var(--cp-accent-hover);
 }
 
+.primary-button:disabled {
+  border-color: var(--cp-border);
+  background: var(--cp-surface-soft);
+  color: var(--cp-text-muted);
+  cursor: not-allowed;
+}
+
+.edit-area {
+  margin-top: 32px;
+  padding-top: 30px;
+  border-top: 1px solid var(--cp-border);
+}
+
+.edit-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.caption-editor {
+  margin-top: 16px;
+}
+
+.editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editor-cue {
+  padding: 14px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.75rem;
+  background: var(--cp-surface);
+}
+
+.editor-cue.has-error {
+  border-color: var(--cp-danger);
+}
+
+.editor-cue-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.editor-cue-number {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.editor-times {
+  display: flex;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.editor-time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.editor-time-field span {
+  color: var(--cp-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.editor-time-field input {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.5rem;
+  background: var(--cp-bg-elevated);
+  color: var(--cp-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-time-field input:focus {
+  outline: none;
+  border-color: var(--cp-accent);
+}
+
+.editor-time-field input.is-invalid {
+  border-color: var(--cp-danger);
+}
+
+.editor-cue-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.editor-cue-actions .icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.editor-cue-actions .icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.editor-cue-actions .icon-button.is-danger {
+  color: var(--cp-danger);
+}
+
+.editor-text {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.5rem;
+  background: var(--cp-bg-elevated);
+  color: var(--cp-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.editor-text:focus {
+  outline: none;
+  border-color: var(--cp-accent);
+}
+
+.editor-errors {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--cp-danger);
+  font-size: 12px;
+}
+
+.editor-insert {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border: 1px dashed var(--cp-border-strong);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.editor-insert:hover {
+  border-color: var(--cp-accent);
+  color: var(--cp-accent);
+}
+
+.editor-insert-empty {
+  margin-top: 16px;
+}
+
 .trust-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -702,6 +873,14 @@ footer a:hover {
 
   .download-row {
     grid-template-columns: 1fr;
+  }
+
+  .editor-times {
+    flex-wrap: wrap;
+  }
+
+  .editor-time-field {
+    flex: 1 1 120px;
   }
 
   .primary-button {
