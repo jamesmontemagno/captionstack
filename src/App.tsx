@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addCue,
   formats,
@@ -95,7 +95,14 @@ function App() {
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? 'light')
+  const [theme, setTheme] = useState('light')
+
+  useEffect(() => {
+    // Sync to the theme the inline head script picked before hydration. Both server and
+    // client render 'light' first so the hydrated markup matches, then we reflect reality.
+    const activeTheme = document.documentElement.dataset.theme
+    if (activeTheme && activeTheme !== theme) setTheme(activeTheme)
+  }, [theme])
 
   const processContent = useCallback((content: string, name: string, size: number) => {
     try {
