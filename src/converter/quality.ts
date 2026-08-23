@@ -22,6 +22,10 @@ export type QualityFix =
   | { kind: 'remove-cue'; cueId: string }
   | { kind: 'clean-text'; cueId: string; text: string }
   | { kind: 'extend-end'; cueId: string; end: number }
+  /** Re-wrap the cue's words into balanced lines that fit the line-length limit. */
+  | { kind: 'rewrap'; cueId: string; text: string }
+  /** Replace the cue with several shorter cues; timing is shared proportionally to text length. */
+  | { kind: 'split-cue'; cueId: string; parts: string[] }
 
 export interface QualityFinding {
   id: string
@@ -96,6 +100,80 @@ function readingSpeed(text: string, durationMs: number): number {
   return durationMs > 0 ? characters / (durationMs / 1000) : Number.POSITIVE_INFINITY
 }
 
+/**
+ * Splits words into `count` groups with as-equal-as-possible character lengths, preferring to
+ * break after sentence punctuation when a candidate boundary is close to the ideal point.
+ */
+function balanceWords(words: string[], count: number): string[][] {
+  if (count <= 1 || words.length <= count) return count <= 1 ? [words] : words.map((word) => [word])
+  const total = words.join(' ').length
+  const groups: string[][] = []
+  let cursor = 0
+  for (let group = 1; group < count; group += 1) {
+    const target = (total * group) / count
+    let best = cursor + 1
+    let bestScore = Number.POSITIVE_INFINITY
+    let length = -1
+    for (let index = cursor; index < words.length - (count - group); index += 1) {
+      length += words[index].length + 1
+      const endsSentence = /[.!?…]["”’)]?$/.test(words[index])
+      const endsClause = /[,;:]["”’)]?$/.test(words[index])
+      const distance = Math.abs(length - target)
+      // A sentence or clause end within a few characters of the ideal break wins.
+      const score = distance - (endsSentence ? 6 : endsClause ? 3 : 0)
+      if (score < bestScore) {
+        bestScore = score
+        best = index + 1
+      }
+    }
+    groups.push(words.slice(cursor, best))
+    cursor = best
+  }
+  groups.push(words.slice(cursor))
+  return groups
+}
+
+/** Lays `text` out in the fewest balanced lines (≤ maxLines) where every line fits; null if impossible. */
+export function wrapCueText(text: string, maxLineLength = QUALITY_THRESHOLDS.maxLineLength, maxLines = QUALITY_THRESHOLDS.maxLines): string | null {
+  const words = text.split(/\s+/).filter(Boolean)
+  if (words.some((word) => word.length > maxLineLength)) return null
+  for (let lines = 1; lines <= maxLines; lines += 1) {
+    const groups = balanceWords(words, lines)
+    if (groups.every((group) => group.join(' ').length <= maxLineLength)) {
+      return groups.map((group) => group.join(' ')).join('\n')
+    }
+  }
+  return null
+}
+
+/**
+ * Splits a cue's text into the fewest parts (2 or 3) that each fit within the line limits once
+ * re-wrapped. Returns null when even three parts can't satisfy the limits.
+ */
+export function splitCueText(text: string, maxLineLength = QUALITY_THRESHOLDS.maxLineLength, maxLines = QUALITY_THRESHOLDS.maxLines): string[] | null {
+  const words = text.split(/\s+/).filter(Boolean)
+  for (let parts = 2; parts <= 3; parts += 1) {
+    if (words.length < parts) return null
+    const wrapped = balanceWords(words, parts).map((group) => wrapCueText(group.join(' '), maxLineLength, maxLines))
+    if (wrapped.every((part): part is string => part !== null)) return wrapped
+  }
+  return null
+}
+
+/** Distributes [start, end] across parts in proportion to their character counts. */
+export function splitTiming(start: number, end: number, parts: string[]): Array<{ start: number; end: number }> {
+  const weights = parts.map((part) => Math.max(1, part.replace(/\s+/g, '').length))
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  const duration = Math.max(0, end - start)
+  let cursor = start
+  return parts.map((_, index) => {
+    const next = index === parts.length - 1 ? end : Math.round(cursor + (duration * weights[index]) / total)
+    const slice = { start: cursor, end: next }
+    cursor = next
+    return slice
+  })
+}
+
 export function analyzeCues(cues: EditableCue[]): QualityReport {
   const findings: QualityFinding[] = []
   const validation = validateCues(cues)
@@ -160,23 +238,39 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
     if (cleaned.length > 0) {
       const lines = cleaned.split('\n')
       const longest = Math.max(...lines.map((line) => line.length))
-      if (longest > QUALITY_THRESHOLDS.maxLineLength) {
-        push({
-          check: 'long-line',
-          severity: 'warning',
-          cueId: cue.id,
-          cueIndex: index,
-          message: `Longest line is ${longest} characters; aim for ${QUALITY_THRESHOLDS.maxLineLength} or fewer.`,
-        })
-      }
-      if (lines.length > QUALITY_THRESHOLDS.maxLines) {
-        push({
-          check: 'too-many-lines',
-          severity: 'warning',
-          cueId: cue.id,
-          cueIndex: index,
-          message: `${lines.length} lines of text; most players show ${QUALITY_THRESHOLDS.maxLines} comfortably.`,
-        })
+      const tooLong = longest > QUALITY_THRESHOLDS.maxLineLength
+      const tooMany = lines.length > QUALITY_THRESHOLDS.maxLines
+      if (tooLong || tooMany) {
+        // Prefer re-wrapping inside the cue; fall back to splitting it into 2–3 cues.
+        const rewrapped = wrapCueText(cleaned)
+        const parts = rewrapped === null ? splitCueText(cleaned) : null
+        const layoutFix: QualityFix | undefined = rewrapped !== null && rewrapped !== cue.text
+          ? { kind: 'rewrap', cueId: cue.id, text: rewrapped }
+          : parts
+            ? { kind: 'split-cue', cueId: cue.id, parts }
+            : undefined
+        if (tooLong) {
+          push({
+            check: 'long-line',
+            severity: 'warning',
+            cueId: cue.id,
+            cueIndex: index,
+            message: `Longest line is ${longest} characters; aim for ${QUALITY_THRESHOLDS.maxLineLength} or fewer.${layoutFix?.kind === 'split-cue' ? ` Fix splits it into ${layoutFix.parts.length} cues.` : ''}`,
+            fix: layoutFix,
+          })
+        }
+        if (tooMany) {
+          // One layout fix per cue: when both checks fire, the long-line finding carries it.
+          const fix = tooLong ? undefined : layoutFix
+          push({
+            check: 'too-many-lines',
+            severity: 'warning',
+            cueId: cue.id,
+            cueIndex: index,
+            message: `${lines.length} lines of text; most players show ${QUALITY_THRESHOLDS.maxLines} comfortably.${fix?.kind === 'split-cue' ? ` Fix splits it into ${fix.parts.length} cues.` : ''}`,
+            fix,
+          })
+        }
       }
     }
 
@@ -251,7 +345,33 @@ export function applyFix(cues: EditableCue[], fix: QualityFix): EditableCue[] {
       return cues.map((cue, position) => (position === index ? { ...cue, text: fix.text } : cue))
     case 'extend-end':
       return cues.map((cue, position) => (position === index ? { ...cue, end: formatTimestamp(fix.end) } : cue))
+    case 'rewrap':
+      return cues.map((cue, position) => (position === index ? { ...cue, text: fix.text } : cue))
+    case 'split-cue': {
+      const cue = cues[index]
+      const start = tryParse(cue.start)
+      const end = tryParse(cue.end)
+      if (start === null || end === null || fix.parts.length < 2) return cues
+      const timings = splitTiming(start, end, fix.parts)
+      const taken = new Set(cues.map((existing) => existing.id))
+      const replacements: EditableCue[] = fix.parts.map((text, part) => ({
+        // The first part keeps the cue's identity (and any original id); the rest are new cues.
+        ...(part === 0 ? cue : { id: uniqueSplitId(cue.id, part, taken) }),
+        start: formatTimestamp(timings[part].start),
+        end: formatTimestamp(timings[part].end),
+        text,
+      }))
+      return [...cues.slice(0, index), ...replacements, ...cues.slice(index + 1)]
+    }
   }
+}
+
+/** Deterministic id for a cue created by splitting `sourceId`, bumped if a previous split already used it. */
+function uniqueSplitId(sourceId: string, part: number, taken: Set<string>): string {
+  let candidate = `${sourceId}-split-${part}`
+  for (let attempt = 2; taken.has(candidate); attempt += 1) candidate = `${sourceId}-split-${part}-${attempt}`
+  taken.add(candidate)
+  return candidate
 }
 
 /**
