@@ -25,9 +25,10 @@ import {
 } from './converter'
 import CaptionEditor, { EDITOR_PAGE_SIZE } from './CaptionEditor'
 import QualityReport from './QualityReport'
+import BatchPanel from './BatchPanel'
+import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } from './batch'
 import './App.css'
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
 const MAX_HISTORY = 50
 const ACCEPTED_EXTENSIONS = formats.map((format) => format.extension).concat('.xml').join(',')
 const DEMO_CAPTIONS = `WEBVTT
@@ -78,15 +79,6 @@ function durationLabel(milliseconds: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return minutes ? `${minutes}m ${seconds}s` : `${seconds}s`
-}
-
-function cleanBaseName(filename: string): string {
-  return filename
-    .replace(/\.[^.]+$/, '')
-    .replace(/[<>:"/\\|?*]/g, '-')
-    .split('')
-    .map((character) => character.charCodeAt(0) < 32 ? '-' : character)
-    .join('')
 }
 
 interface LoadedFile {
@@ -153,6 +145,47 @@ function App() {
     }
     void loadSource(file, file.name, file.size)
   }, [loadSource])
+
+  const batch = useBatch()
+  const isBatch = batch.items.length > 0
+  const [isZipping, setIsZipping] = useState(false)
+
+  // One file takes the single-file path with editing; two or more become a batch.
+  const { addFiles } = batch
+  const handleFiles = useCallback((list: FileList | File[] | null | undefined) => {
+    const files = list ? Array.from(list) : []
+    if (files.length === 0) return
+    if (isBatch || files.length > 1) {
+      // Entering batch mode supersedes any single-file load still in flight.
+      loadRequest.current += 1
+      setLoadingName(null)
+      setLoaded(null)
+      setError('')
+      addFiles(files)
+      return
+    }
+    processFile(files[0])
+  }, [addFiles, isBatch, processFile])
+
+  const handleBatchDownload = async () => {
+    if (batch.readyCount === 0 || isZipping) return
+    setIsZipping(true)
+    try {
+      const blob = await buildBatchZip(batch.items, outputFormat)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = zipFileName(outputFormat, batch.readyCount)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The ZIP archive could not be prepared.')
+    } finally {
+      setIsZipping(false)
+    }
+  }
 
   const loadDemo = useCallback(() => {
     void loadSource({ content: DEMO_CAPTIONS, filename: 'captionstack-demo.vtt' }, 'captionstack-demo.vtt', new Blob([DEMO_CAPTIONS]).size)
@@ -287,6 +320,9 @@ function App() {
 
   const duration = serialized?.duration ?? 0
   const cueCount = loaded ? loaded.cues.length : 0
+  const canPickFormat = Boolean(loaded) || batch.readyCount > 0
+  const batchSourceFormats = [...new Set(batch.items.flatMap((item) => (item.sourceFormat ? [item.sourceFormat] : [])))]
+  const batchSourceLabel = batchSourceFormats.length === 0 ? '…' : batchSourceFormats.length === 1 ? batchSourceFormats[0].toUpperCase() : 'MIXED'
 
   return (
     <div className="app-shell">
@@ -315,11 +351,35 @@ function App() {
 
         <section className="converter-card" aria-label="Caption converter">
           <div className="step-heading">
-            <span className="step-number">{loaded ? <Icon name="check" size={17} /> : '1'}</span>
-            <div><h2>Choose your caption file</h2><p>We’ll detect the format automatically.</p></div>
+            <span className="step-number">{loaded || batch.readyCount > 0 ? <Icon name="check" size={17} /> : '1'}</span>
+            <div>
+              <h2>{isBatch ? 'Choose your caption files' : 'Choose your caption file'}</h2>
+              <p>{isBatch ? `${batch.items.length} ${batch.items.length === 1 ? 'file' : 'files'} · each format is detected separately.` : 'We’ll detect the format automatically. Drop several files to convert them all at once.'}</p>
+            </div>
           </div>
 
-          {!loaded ? (
+          {isBatch ? (
+            <>
+              <BatchPanel
+                items={batch.items}
+                isDragging={isDragging}
+                onAddMore={() => inputRef.current?.click()}
+                onRemove={batch.removeItem}
+                onClear={() => { batch.clear(); setError(''); if (inputRef.current) inputRef.current.value = '' }}
+                onDragEnter={() => setIsDragging(true)}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(files) => { setIsDragging(false); handleFiles(files) }}
+              />
+              <input
+                ref={inputRef}
+                className="visually-hidden"
+                type="file"
+                multiple
+                accept={ACCEPTED_EXTENSIONS}
+                onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }}
+              />
+            </>
+          ) : !loaded ? (
             <>
               <button
                 className={`drop-zone${isDragging ? ' is-dragging' : ''}${loadingName ? ' is-loading' : ''}`}
@@ -333,7 +393,7 @@ function App() {
                 onDrop={(event) => {
                   event.preventDefault()
                   setIsDragging(false)
-                  processFile(event.dataTransfer.files[0])
+                  handleFiles(event.dataTransfer.files)
                 }}
               >
                 {loadingName ? (
@@ -345,9 +405,9 @@ function App() {
                 ) : (
                   <>
                     <span className="upload-icon"><Icon name="upload" size={28} /></span>
-                    <strong>Drop your file here</strong>
+                    <strong>Drop your files here</strong>
                     <span>or click to browse from your device</span>
-                    <small>Up to 10 MB · SRT, VTT, SBV, LRC, TTML, JSON, CSV, TXT</small>
+                    <small>Up to 10 MB each · SRT, VTT, SBV, LRC, TTML, JSON, CSV, TXT · multiple files become a ZIP</small>
                   </>
                 )}
               </button>
@@ -355,8 +415,9 @@ function App() {
                 ref={inputRef}
                 className="visually-hidden"
                 type="file"
+                multiple
                 accept={ACCEPTED_EXTENSIONS}
-                onChange={(event) => processFile(event.target.files?.[0])}
+                onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }}
               />
               <div className="demo-row">
                 <span>Don’t have a file handy?</span>
@@ -427,10 +488,10 @@ function App() {
             </div>
           )}
 
-          <div className={`conversion-area${loaded ? '' : ' is-disabled'}`} aria-disabled={!loaded}>
+          <div className={`conversion-area${canPickFormat ? '' : ' is-disabled'}`} aria-disabled={!canPickFormat}>
             <div className="step-heading">
-              <span className="step-number">3</span>
-              <div><h2>Choose an output format</h2><p>Select what you need on the other side.</p></div>
+              <span className="step-number">{isBatch ? 2 : 3}</span>
+              <div><h2>Choose an output format</h2><p>{isBatch ? 'Every file in the batch converts to this format.' : 'Select what you need on the other side.'}</p></div>
             </div>
             <div className="format-grid">
               {formats.map((format) => (
@@ -438,7 +499,7 @@ function App() {
                   className={`format-option${outputFormat === format.id ? ' is-selected' : ''}`}
                   key={format.id}
                   type="button"
-                  disabled={!loaded}
+                  disabled={!canPickFormat}
                   onClick={() => setOutputFormat(format.id)}
                   aria-pressed={outputFormat === format.id}
                 >
@@ -449,6 +510,43 @@ function App() {
               ))}
             </div>
           </div>
+
+          {isBatch && (
+            <div className="result-area">
+              <div className="flow-summary">
+                <div><span>FROM</span><strong>{batchSourceLabel}</strong></div>
+                <Icon name="arrow" size={22} />
+                <div><span>TO</span><strong>{outputFormat.toUpperCase()}</strong></div>
+                <div className="stats">
+                  <span><strong>{batch.readyCount}</strong> ready</span>
+                  <span><strong>{batch.items.filter((item) => item.status === 'reading').length}</strong> reading</span>
+                  <span><strong>{batch.errorCount}</strong> failed</span>
+                </div>
+              </div>
+              {batch.errorCount > 0 && (
+                <p className="batch-note" role="status">
+                  {batch.errorCount === 1 ? 'One file' : `${batch.errorCount} files`} couldn’t be converted and will be left out of the archive. The other files are unaffected.
+                </p>
+              )}
+              <div className="download-row">
+                <label htmlFor="zip-name">Archive</label>
+                <div className="filename-input is-readonly">
+                  <input id="zip-name" value={zipFileName(outputFormat, batch.readyCount)} readOnly aria-describedby="zip-name-hint" />
+                  <span id="zip-name-hint">{batch.readyCount} {batch.readyCount === 1 ? 'file' : 'files'}</span>
+                </div>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void handleBatchDownload()}
+                  disabled={batch.readyCount === 0 || batch.isReading || isZipping}
+                  aria-busy={isZipping}
+                >
+                  <Icon name="download" size={20} />
+                  {isZipping ? 'Preparing ZIP…' : batch.isReading ? 'Reading files…' : `Download ${batch.readyCount} ${batch.readyCount === 1 ? 'file' : 'files'} as ZIP`}
+                </button>
+              </div>
+            </div>
+          )}
 
           {loaded && (
             <div className="result-area">
