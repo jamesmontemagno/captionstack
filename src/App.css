@@ -1034,6 +1034,86 @@ h1 em {
   font-weight: 700;
 }
 
+.find-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.find-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.find-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.find-options input {
+  accent-color: var(--cp-accent);
+}
+
+.find-status {
+  margin: 12px 0 0;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+}
+
+.find-status.is-error {
+  color: var(--cp-danger);
+}
+
+.find-matches {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.find-matches li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 0.5rem;
+  background: var(--cp-surface);
+  font-size: 13px;
+}
+
+.find-snippet {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cp-text-muted);
+}
+
+.find-snippet mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--cp-highlight);
+  color: var(--cp-accent);
+  font-weight: 700;
+}
+
+.find-count {
+  flex: 0 0 auto;
+  color: var(--cp-text-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .quality-report {
   margin-top: 18px;
   border: 1px solid var(--cp-border);
@@ -1668,6 +1748,11 @@ footer a:hover {
   }
 
   .seo-link-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .find-fields,
+  .tool-fields-grid {
     grid-template-columns: 1fr;
   }
 

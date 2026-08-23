@@ -27,6 +27,7 @@ import {
 import CaptionEditor, { EDITOR_PAGE_SIZE } from './CaptionEditor'
 import QualityReport from './QualityReport'
 import TimingPanel from './TimingPanel'
+import FindReplacePanel from './FindReplacePanel'
 import BatchPanel from './BatchPanel'
 import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } from './batch'
 import LandingContent from './LandingContent'
@@ -66,7 +67,7 @@ function BrandIcon() {
   )
 }
 
-function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy'; size?: number }) {
+function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy' | 'search'; size?: number }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
     file: <><path d="M6 2.75h7l5 5V21.25H6z" /><path d="M13 2.75v5h5M9 13h6M9 17h6" /></>,
@@ -81,6 +82,7 @@ function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'downlo
     edit: <><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z" /><path d="M13.5 6.5l3 3" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
     copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
+    search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
   }
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
@@ -153,7 +155,7 @@ function App({ pathname = '/' }: AppProps) {
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [activeTool, setActiveTool] = useState<'timing' | null>(null)
+  const [activeTool, setActiveTool] = useState<'timing' | 'replace' | null>(null)
   const [editorPage, setEditorPage] = useState(0)
   const [theme, setTheme] = useState('light')
   const [loadingName, setLoadingName] = useState<string | null>(null)
@@ -374,14 +376,16 @@ function App({ pathname = '/' }: AppProps) {
 
   const [pendingFocus, setPendingFocus] = useState<string | null>(null)
 
-  const jumpToCue = useCallback((finding: QualityFinding) => {
-    // Resolve the position from the live cue list: the report may lag behind recent edits.
-    const index = loaded?.cues.findIndex((cue) => cue.id === finding.cueId) ?? -1
+  const jumpToCueId = useCallback((cueId: string) => {
+    // Resolve the position from the live cue list: reports may lag behind recent edits.
+    const index = loaded?.cues.findIndex((cue) => cue.id === cueId) ?? -1
     if (index === -1) return
     setIsEditing(true)
     setEditorPage(Math.floor(index / EDITOR_PAGE_SIZE))
-    setPendingFocus(finding.cueId)
+    setPendingFocus(cueId)
   }, [loaded])
+
+  const jumpToCue = useCallback((finding: QualityFinding) => jumpToCueId(finding.cueId), [jumpToCueId])
 
   useEffect(() => {
     if (!pendingFocus) return
@@ -628,12 +632,27 @@ function App({ pathname = '/' }: AppProps) {
                   >
                     <Icon name="clock" size={15} />Timing
                   </button>
+                  <button
+                    className={`tool-toggle${activeTool === 'replace' ? ' is-active' : ''}`}
+                    type="button"
+                    aria-pressed={activeTool === 'replace'}
+                    onClick={() => setActiveTool((tool) => (tool === 'replace' ? null : 'replace'))}
+                  >
+                    <Icon name="search" size={15} />Find &amp; replace
+                  </button>
                 </div>
               </div>
               {activeTool === 'timing' && (
                 <TimingPanel
                   cues={loaded.cues}
                   onApply={(transform) => mutateCues(transform)}
+                />
+              )}
+              {activeTool === 'replace' && (
+                <FindReplacePanel
+                  cues={loaded.cues}
+                  onReplaceAll={(transform) => mutateCues(transform)}
+                  onJump={jumpToCueId}
                 />
               )}
               {report ? (
