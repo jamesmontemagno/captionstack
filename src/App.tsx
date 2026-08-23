@@ -94,6 +94,8 @@ interface LoadedFile {
   cues: EditableCue[]
   /** Previous cue lists, oldest first, so automatic fixes and structural edits can be undone. */
   history: EditableCue[][]
+  /** True while consecutive keystroke edits are sharing the most recent history entry. */
+  coalescing: boolean
 }
 
 function App() {
@@ -117,7 +119,7 @@ function App() {
     try {
       const parsed = parseCaptions(content, name)
       const nextFormat = formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
-      setLoaded({ name, size, sourceFormat: parsed.format, cues: toEditableCues(parsed.cues), history: [] })
+      setLoaded({ name, size, sourceFormat: parsed.format, cues: toEditableCues(parsed.cues), history: [], coalescing: false })
       setOutputFormat(nextFormat)
       setOutputName(cleanBaseName(name))
       setIsEditing(false)
@@ -166,17 +168,17 @@ function App() {
   const report = useMemo(() => (loaded ? analyzeCues(loaded.cues) : null), [loaded])
 
   const mutateCues = useCallback(
-    (transform: (cues: EditableCue[]) => EditableCue[], options: { record?: boolean } = {}) => {
+    (transform: (cues: EditableCue[]) => EditableCue[], options: { coalesce?: boolean } = {}) => {
       setLoaded((current) => {
         if (!current) return current
         const cues = transform(current.cues)
         if (cues === current.cues) return current
-        // Keystroke-level text edits aren't recorded: the textarea already has native undo,
-        // and they would otherwise flood the history meant for fixes and structural changes.
-        const history = options.record === false
-          ? current.history
-          : [...current.history, current.cues].slice(-MAX_HISTORY)
-        return { ...current, cues, history }
+        // Keystroke-level edits coalesce into one history entry: the first keystroke after a
+        // fix or structural change takes a snapshot, later ones reuse it. Undo therefore never
+        // drops typing silently, and the history isn't flooded by individual characters.
+        const shouldSnapshot = !options.coalesce || !current.coalescing
+        const history = shouldSnapshot ? [...current.history, current.cues].slice(-MAX_HISTORY) : current.history
+        return { ...current, cues, history, coalescing: Boolean(options.coalesce) }
       })
     },
     [],
@@ -186,7 +188,7 @@ function App() {
     setLoaded((current) => {
       if (!current || current.history.length === 0) return current
       const history = current.history.slice(0, -1)
-      return { ...current, cues: current.history[current.history.length - 1], history }
+      return { ...current, cues: current.history[current.history.length - 1], history, coalescing: false }
     })
   }, [])
 
@@ -345,7 +347,7 @@ function App() {
                 <CaptionEditor
                   cues={loaded.cues}
                   errors={cueErrors}
-                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { record: false })}
+                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { coalesce: true })}
                   onAdd={(index) => mutateCues((cues) => addCue(cues, index))}
                   onRemove={(index) => mutateCues((cues) => removeCue(cues, index))}
                   onMove={(index, direction) => mutateCues((cues) => moveCue(cues, index, direction))}

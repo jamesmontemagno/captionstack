@@ -38,7 +38,7 @@ function QualityReport({ report, canUndo, onFix, onFixAll, onUndo, onJump }: Qua
     <section className={`quality-report${clean ? ' is-clean' : report.errorCount ? ' has-errors' : ' has-warnings'}`} aria-label="Caption quality report">
       <div className="quality-summary">
         <SeverityIcon severity={clean ? 'pass' : report.errorCount ? 'error' : 'warning'} />
-        <div className="quality-summary-text">
+        <div className="quality-summary-text" role="status">
           <strong>{summaryLabel(report)}</strong>
           <span>{report.passedCount} of {report.checks.length} checks passed{report.fixableCount ? ` · ${report.fixableCount} can be fixed automatically` : ''}</span>
         </div>
@@ -61,23 +61,26 @@ function QualityReport({ report, canUndo, onFix, onFixAll, onUndo, onJump }: Qua
         <div className="quality-details">
           {report.findings.length > 0 && (
             <ul className="quality-findings">
-              {report.findings.map((finding) => (
-                <li key={finding.id} className={`quality-finding is-${finding.severity}`}>
-                  <SeverityIcon severity={finding.severity} />
-                  <button type="button" className="quality-cue-link" onClick={() => onJump(finding)}>
-                    Cue {finding.cueIndex + 1}
-                  </button>
-                  <span className="quality-finding-text">
-                    <strong>{report.checks.find((check) => check.id === finding.check)?.label}</strong>
-                    {finding.message}
-                  </span>
-                  {finding.fix ? (
-                    <button type="button" className="quality-fix" onClick={() => onFix(finding)}>Fix</button>
-                  ) : (
-                    <span className="quality-manual">Manual</span>
-                  )}
-                </li>
-              ))}
+              {report.findings.map((finding) => {
+                const label = report.checks.find((check) => check.id === finding.check)?.label
+                return (
+                  <li key={finding.id} className={`quality-finding is-${finding.severity}`}>
+                    <SeverityIcon severity={finding.severity} />
+                    <button type="button" className="quality-cue-link" aria-label={`Go to cue ${finding.cueIndex + 1}`} onClick={() => onJump(finding)}>
+                      Cue {finding.cueIndex + 1}
+                    </button>
+                    <span className="quality-finding-text">
+                      <strong>{label}</strong>
+                      {finding.message}
+                    </span>
+                    {finding.fix ? (
+                      <button type="button" className="quality-fix" aria-label={`Fix ${label?.toLowerCase()} on cue ${finding.cueIndex + 1}`} onClick={() => onFix(finding)}>Fix</button>
+                    ) : (
+                      <span className="quality-manual">Manual</span>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           )}
 
