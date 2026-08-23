@@ -30,8 +30,10 @@
     <script>
       (() => {
         const param = new URLSearchParams(window.location.search).get("scoutTheme");
+        let saved = null;
+        try { saved = window.localStorage.getItem("captionstack:theme"); } catch {}
         const theme =
-          param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          param || saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         document.documentElement.setAttribute("data-theme", theme);
       })();
     </script>

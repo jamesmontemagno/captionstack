@@ -29,6 +29,10 @@ Plain-text imports receive three-second cue timings. Plain-text exports intentio
 
 No file? Click **Paste caption text** under the drop zone, or press **Ctrl/⌘+V** anywhere on an empty converter. The format is detected from the content (an SRT block, a WebVTT snippet, a YouTube transcript, JSON from an API…), and files on the clipboard are accepted too. Pasted captions default to the file name `pasted-captions`.
 
+## Output, clipboard, and preferences
+
+The result area shows the first three cues by default; **Show full output** switches to the whole converted file in a scrollable code view (capped at 2 MB on screen — download for more). **Copy** puts the latest output on the clipboard, falling back to a legacy copy path where the Clipboard API is unavailable. The theme toggle and the last chosen output format are remembered in `localStorage` (`captionstack:theme`, `captionstack:output-format`); the saved theme is applied before first paint, and conversion landing pages always preselect their own target format.
+
 ## Batch conversion
 
 Drop or pick several files at once to convert them together. Each file's format is detected independently, per-file errors (unsupported type, over 10 MB, malformed content) are shown inline without affecting the others, and the successful conversions download as a single ZIP archive (`captionstack-<count>-files-<format>.zip`). The archive is built in the browser with a dependency-free ZIP writer (`src/converter/zip.ts`).

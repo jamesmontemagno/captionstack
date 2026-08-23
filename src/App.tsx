@@ -7,6 +7,7 @@ import {
   formats,
   getFormat,
   hasBlockingErrors,
+  isFormatId,
   loadCaptionsAsync,
   mergeCue,
   moveCue,
@@ -31,10 +32,13 @@ import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } fr
 import LandingContent from './LandingContent'
 import { FORMAT_INFO } from './seo/formatInfo'
 import { matchRoute, routePath, type Route } from './seo/routes'
+import { copyText, readPreference, STORAGE_KEYS, writePreference } from './preferences'
 import './App.css'
 
 const MAX_HISTORY = 50
 const PASTED_NAME = 'pasted-captions'
+/** The full-output view shows at most this many characters; larger files are downloaded instead. */
+const FULL_OUTPUT_LIMIT = 2 * 1024 * 1024
 const ACCEPTED_EXTENSIONS = formats.map((format) => format.extension).concat('.xml').join(',')
 const DEMO_CAPTIONS = `WEBVTT
 
@@ -57,7 +61,7 @@ function BrandIcon() {
   )
 }
 
-function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock'; size?: number }) {
+function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy'; size?: number }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
     file: <><path d="M6 2.75h7l5 5V21.25H6z" /><path d="M13 2.75v5h5M9 13h6M9 17h6" /></>,
@@ -71,6 +75,7 @@ function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'downlo
     spinner: <path d="M12 3a9 9 0 1 0 9 9" />,
     edit: <><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17z" /><path d="M13.5 6.5l3 3" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
   }
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
@@ -158,6 +163,21 @@ function App({ pathname = '/' }: AppProps) {
     const activeTheme = document.documentElement.dataset.theme
     if (activeTheme && activeTheme !== theme) setTheme(activeTheme)
   }, [theme])
+
+  // Remembered output format: applied once after hydration unless the page dictates a target.
+  const formatRestored = useRef(false)
+  useEffect(() => {
+    if (formatRestored.current) return
+    formatRestored.current = true
+    if (preferredFormat) return
+    const saved = readPreference(STORAGE_KEYS.outputFormat)
+    if (saved && isFormatId(saved)) setOutputFormat(saved)
+  }, [preferredFormat])
+
+  const chooseOutputFormat = useCallback((format: FormatId) => {
+    setOutputFormat(format)
+    writePreference(STORAGE_KEYS.outputFormat, format)
+  }, [])
 
   const loadSource = useCallback(async (source: CaptionSource, name: string, size: number) => {
     const requestId = (loadRequest.current += 1)
@@ -403,6 +423,22 @@ function App({ pathname = '/' }: AppProps) {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     document.documentElement.dataset.theme = nextTheme
     setTheme(nextTheme)
+    writePreference(STORAGE_KEYS.theme, nextTheme)
+  }
+
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [showFullOutput, setShowFullOutput] = useState(false)
+
+  const handleCopy = async () => {
+    if (!cues || hasCueErrors) return
+    try {
+      // Serialize fresh so the clipboard matches the latest edits, even mid-debounce.
+      const { output } = await serializeCaptionsAsync(cues, outputFormat)
+      setCopyState((await copyText(output)) ? 'copied' : 'failed')
+    } catch {
+      setCopyState('failed')
+    }
+    window.setTimeout(() => setCopyState('idle'), 2000)
   }
 
   const duration = serialized?.duration ?? 0
@@ -632,7 +668,7 @@ function App({ pathname = '/' }: AppProps) {
                   key={format.id}
                   type="button"
                   disabled={!canPickFormat}
-                  onClick={() => setOutputFormat(format.id)}
+                  onClick={() => chooseOutputFormat(format.id)}
                   aria-pressed={outputFormat === format.id}
                 >
                   <span className="format-extension">.{format.id}</span>
@@ -694,14 +730,33 @@ function App({ pathname = '/' }: AppProps) {
               </div>
 
               <div className="preview">
-                <div className="preview-heading"><h3>Caption preview</h3><span>First {Math.min(3, cueCount)} cues</span></div>
-                {loaded.cues.slice(0, 3).map((cue, index) => (
-                  <div className="cue-row" key={cue.id}>
-                    <span>{index + 1}</span>
-                    <time>{cue.start} → {cue.end}</time>
-                    <p>{cue.text}</p>
-                  </div>
-                ))}
+                <div className="preview-heading">
+                  <h3>{showFullOutput ? `Full ${outputFormat.toUpperCase()} output` : 'Caption preview'}</h3>
+                  <span>
+                    {showFullOutput
+                      ? serialized
+                        ? `${serialized.output.split('\n').length.toLocaleString()} lines${serialized.output.length > FULL_OUTPUT_LIMIT ? ` · showing the first ${readableBytes(FULL_OUTPUT_LIMIT)}` : ''}`
+                        : 'Preparing…'
+                      : `First ${Math.min(3, cueCount)} cues`}
+                    {' · '}
+                    <button type="button" className="text-button" aria-pressed={showFullOutput} onClick={() => setShowFullOutput((value) => !value)}>
+                      {showFullOutput ? 'Show summary' : 'Show full output'}
+                    </button>
+                  </span>
+                </div>
+                {showFullOutput ? (
+                  <pre className="output-view" tabIndex={0} aria-label={`Converted ${outputFormat.toUpperCase()} output`}>
+                    {serialized ? serialized.output.slice(0, FULL_OUTPUT_LIMIT) : ''}
+                  </pre>
+                ) : (
+                  loaded.cues.slice(0, 3).map((cue, index) => (
+                    <div className="cue-row" key={cue.id}>
+                      <span>{index + 1}</span>
+                      <time>{cue.start} → {cue.end}</time>
+                      <p>{cue.text}</p>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="download-row">
@@ -710,6 +765,16 @@ function App({ pathname = '/' }: AppProps) {
                   <input id="output-name" value={outputName} onChange={(event) => setOutputName(event.target.value)} />
                   <span>{getFormat(outputFormat).extension}</span>
                 </div>
+                <button
+                  className={`secondary-button${copyState === 'copied' ? ' is-success' : ''}`}
+                  type="button"
+                  onClick={() => void handleCopy()}
+                  disabled={hasCueErrors}
+                  aria-live="polite"
+                >
+                  <Icon name={copyState === 'copied' ? 'check' : 'copy'} size={18} />
+                  {copyState === 'copied' ? 'Copied!' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
+                </button>
                 <button className="primary-button" type="button" onClick={() => void handleDownload()} disabled={hasCueErrors || isDownloading} aria-busy={isDownloading}>
                   <Icon name="download" size={20} />{isDownloading ? 'Preparing file…' : 'Download converted file'}
                 </button>
