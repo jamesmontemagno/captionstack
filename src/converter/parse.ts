@@ -241,7 +241,107 @@ function parseCsv(content: string): Cue[] {
     }))
 }
 
+const TRANSCRIPT_TIME = String.raw`(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?`
+/** A whole line that is only a timestamp, optionally wrapped in brackets. */
+const TRANSCRIPT_TIME_LINE = new RegExp(String.raw`^[\[(]?\s*(${TRANSCRIPT_TIME})\s*[\])]?$`)
+/**
+ * One-line transcript entries: "[00:12] James: text", "00:12 James: text", "James (00:12): text",
+ * "James 00:12 text". Speaker names are short (≤ 4 words) and never end a sentence.
+ */
+const SPEAKER = String.raw`([^\n:()\[\]]{1,40}?)`
+const INLINE_PATTERNS = [
+  new RegExp(String.raw`^[\[(]?\s*(${TRANSCRIPT_TIME})\s*[\])]?\s*[-–—]?\s*(?:${SPEAKER}\s*:\s*)?(.*)$`),
+  new RegExp(String.raw`^${SPEAKER}\s*[\[(]\s*(${TRANSCRIPT_TIME})\s*[\])]\s*:?\s*(.*)$`),
+]
+
+interface TranscriptEntry {
+  start: number
+  speaker?: string
+  text: string
+}
+
+function cleanSpeaker(name: string | undefined): string | undefined {
+  const trimmed = name?.trim()
+  if (!trimmed || trimmed.split(/\s+/).length > 3) return undefined
+  return trimmed
+}
+
+/**
+ * Recognizes podcast/meeting transcript exports: blocks of "timestamp / speaker / text" (speaker
+ * optional) or one-line "[time] Speaker: text" entries. Returns null when fewer than two thirds
+ * of the blocks carry a timestamp, so ordinary prose keeps the plain-text path.
+ */
+function parseTranscriptEntries(content: string): TranscriptEntry[] | null {
+  const blocks = normalize(content).split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+  if (blocks.length === 0) return null
+  const entries: TranscriptEntry[] = []
+  let timed = 0
+
+  for (const block of blocks) {
+    const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+    const timeLine = lines[0]?.match(TRANSCRIPT_TIME_LINE)
+    if (timeLine && lines.length >= 2) {
+      // Block form: the line after the timestamp is a speaker when it is short and the block has text after it.
+      const speaker = lines.length >= 3 ? cleanSpeaker(lines[1]) : undefined
+      const text = lines.slice(speaker ? 2 : 1).join('\n')
+      entries.push({ start: parseTimestamp(timeLine[1]), speaker, text })
+      timed += 1
+      continue
+    }
+    // Inline form: every line of the block may be its own entry.
+    let matchedAny = false
+    for (const line of lines) {
+      const inline = line.match(INLINE_PATTERNS[0])
+      const inlineSpeakerFirst = inline ? null : line.match(INLINE_PATTERNS[1])
+      if (inline) {
+        entries.push({ start: parseTimestamp(inline[1]), speaker: cleanSpeaker(inline[2]), text: inline[3].trim() })
+        matchedAny = true
+      } else if (inlineSpeakerFirst) {
+        entries.push({ start: parseTimestamp(inlineSpeakerFirst[2]), speaker: cleanSpeaker(inlineSpeakerFirst[1]), text: inlineSpeakerFirst[3].trim() })
+        matchedAny = true
+      } else if (entries.length > 0 && matchedAny) {
+        // Continuation line of the previous inline entry.
+        entries[entries.length - 1].text += `\n${line}`
+      } else {
+        entries.push({ start: Number.NaN, text: line })
+      }
+    }
+    if (matchedAny) timed += 1
+  }
+
+  // Need a clear majority of timestamped units (blocks, or lines in the inline form) and at least two.
+  const timedEntries = entries.filter((entry) => Number.isFinite(entry.start)).length
+  if (timedEntries < 2 || timed < Math.ceil(blocks.length * (2 / 3)) || timedEntries < Math.ceil(entries.length * (2 / 3))) return null
+  return entries.filter((entry) => entry.text.length > 0)
+}
+
+/** True when the content looks like a timestamped transcript rather than plain paragraphs. */
+export function looksLikeTranscript(content: string): boolean {
+  return parseTranscriptEntries(content) !== null
+}
+
+function parseTranscript(entries: TranscriptEntry[]): Cue[] {
+  // Untimed stragglers inherit the previous entry's time so ordering is preserved.
+  let lastStart = 0
+  const timedEntries = entries.map((entry) => {
+    if (Number.isFinite(entry.start)) lastStart = entry.start
+    return { ...entry, start: Number.isFinite(entry.start) ? entry.start : lastStart }
+  })
+  return timedEntries.map((entry, index) => {
+    const nextStart = timedEntries[index + 1]?.start
+    // Exports sometimes carry a later "start" slightly before the previous one; keep a positive duration.
+    const end = nextStart !== undefined && nextStart > entry.start ? nextStart : entry.start + 3000
+    return {
+      start: entry.start,
+      end,
+      text: entry.speaker ? `${entry.speaker}: ${entry.text}` : entry.text,
+    }
+  })
+}
+
 function parseText(content: string): Cue[] {
+  const transcript = parseTranscriptEntries(content)
+  if (transcript) return parseTranscript(transcript)
   return normalize(content)
     .split(/\n{2,}|\n/)
     .map((text) => text.trim())

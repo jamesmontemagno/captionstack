@@ -26,6 +26,10 @@ export type QualityFix =
   | { kind: 'rewrap'; cueId: string; text: string }
   /** Replace the cue with several shorter cues; timing is shared proportionally to text length. */
   | { kind: 'split-cue'; cueId: string; parts: string[] }
+  /** Move this cue's start forward to the previous cue's end (bad source timestamps). */
+  | { kind: 'start-at-previous-end'; cueId: string }
+  /** Merge this cue with the next one when the combined text still fits the layout limits. */
+  | { kind: 'merge-next'; cueId: string; text: string }
 
 export interface QualityFinding {
   id: string
@@ -147,17 +151,29 @@ export function wrapCueText(text: string, maxLineLength = QUALITY_THRESHOLDS.max
 }
 
 /**
- * Splits a cue's text into the fewest parts (2 or 3) that each fit within the line limits once
- * re-wrapped. Returns null when even three parts can't satisfy the limits.
+ * Splits a cue's text into the fewest parts that each fit within the line limits once re-wrapped.
+ * Long transcript paragraphs may need many parts; the cap keeps pathological input bounded.
  */
-export function splitCueText(text: string, maxLineLength = QUALITY_THRESHOLDS.maxLineLength, maxLines = QUALITY_THRESHOLDS.maxLines): string[] | null {
+export function splitCueText(text: string, maxLineLength = QUALITY_THRESHOLDS.maxLineLength, maxLines = QUALITY_THRESHOLDS.maxLines, maxParts = 64): string[] | null {
   const words = text.split(/\s+/).filter(Boolean)
-  for (let parts = 2; parts <= 3; parts += 1) {
-    if (words.length < parts) return null
+  if (words.some((word) => word.length > maxLineLength)) return null
+  // Lower bound from total length so we don't try counts that can't possibly fit.
+  const capacity = maxLineLength * maxLines
+  const minimum = Math.max(2, Math.ceil(words.join(' ').length / capacity))
+  for (let parts = minimum; parts <= Math.min(maxParts, words.length); parts += 1) {
     const wrapped = balanceWords(words, parts).map((group) => wrapCueText(group.join(' '), maxLineLength, maxLines))
     if (wrapped.every((part): part is string => part !== null)) return wrapped
   }
-  return null
+  // Balanced splitting can leave one group just over the limit; fall back to a greedy fill.
+  const greedy: string[][] = [[]]
+  for (const word of words) {
+    const current = greedy[greedy.length - 1]
+    if (wrapCueText([...current, word].join(' '), maxLineLength, maxLines) !== null) current.push(word)
+    else greedy.push([word])
+  }
+  if (greedy.length < 2 || greedy.length > maxParts) return null
+  const wrapped = greedy.map((group) => wrapCueText(group.join(' '), maxLineLength, maxLines))
+  return wrapped.every((part): part is string => part !== null) ? wrapped : null
 }
 
 /** Distributes [start, end] across parts in proportion to their character counts. */
@@ -202,15 +218,19 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
 
     if (error?.overlap && index > 0 && start !== null) {
       const previousStart = starts[index - 1]
+      const previousEnd = ends[index - 1]
       // Trimming the previous cue is only safe when it still keeps a positive duration.
       const canTrim = previousStart !== null && previousStart < start
+      // When the source timestamps went backwards, the previous cue starts after this one; the
+      // only order-preserving repair is to start this cue where the previous one ends.
+      const canShift = !canTrim && previousEnd !== null && end !== null && end - previousEnd >= QUALITY_THRESHOLDS.minDurationMs
       push({
         check: 'overlap',
         severity: 'warning',
         cueId: cue.id,
         cueIndex: index,
-        message: `Starts ${formatTimestamp(start)} but cue ${index} ends at ${ends[index - 1] !== null ? formatTimestamp(ends[index - 1]!) : '?'}.`,
-        fix: canTrim ? { kind: 'trim-previous', cueId: cue.id } : undefined,
+        message: `Starts ${formatTimestamp(start)} but cue ${index} ends at ${previousEnd !== null ? formatTimestamp(previousEnd) : '?'}.${canShift ? ' Fix moves this cue’s start to that point.' : ''}`,
+        fix: canTrim ? { kind: 'trim-previous', cueId: cue.id } : canShift ? { kind: 'start-at-previous-end', cueId: cue.id } : undefined,
       })
     }
 
@@ -241,9 +261,14 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
       const tooLong = longest > QUALITY_THRESHOLDS.maxLineLength
       const tooMany = lines.length > QUALITY_THRESHOLDS.maxLines
       if (tooLong || tooMany) {
-        // Prefer re-wrapping inside the cue; fall back to splitting it into 2–3 cues.
+        // Prefer re-wrapping inside the cue; fall back to splitting it into several cues, but only
+        // when each part would still be on screen long enough to read.
         const rewrapped = wrapCueText(cleaned)
-        const parts = rewrapped === null ? splitCueText(cleaned) : null
+        let parts = rewrapped === null ? splitCueText(cleaned) : null
+        if (parts && start !== null && end !== null) {
+          const shortest = Math.min(...splitTiming(start, end, parts).map((slice) => slice.end - slice.start))
+          if (shortest < QUALITY_THRESHOLDS.minDurationMs) parts = null
+        }
         const layoutFix: QualityFix | undefined = rewrapped !== null && rewrapped !== cue.text
           ? { kind: 'rewrap', cueId: cue.id, text: rewrapped }
           : parts
@@ -282,13 +307,25 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
 
       if (duration < QUALITY_THRESHOLDS.minDurationMs) {
         const target = start + QUALITY_THRESHOLDS.targetDurationMs
+        let fix: QualityFix | undefined = roomToExtend(target) ? { kind: 'extend-end', cueId: cue.id, end: target } : undefined
+        if (!fix) {
+          // No room to extend: merging with the next cue is safe when the combined text still
+          // fits two lines and the next cue follows immediately (a split utterance).
+          const next = cues[index + 1]
+          const nextEnd = ends[index + 1]
+          const nextText = next ? cleanCueText(next.text) : ''
+          if (next && nextStart !== null && nextEnd !== null && nextStart - end <= 250 && nextEnd > start) {
+            const merged = wrapCueText(`${cleaned} ${nextText}`.trim())
+            if (merged !== null) fix = { kind: 'merge-next', cueId: cue.id, text: merged }
+          }
+        }
         push({
           check: 'short-duration',
           severity: 'warning',
           cueId: cue.id,
           cueIndex: index,
-          message: `Only on screen for ${duration} ms; aim for at least ${QUALITY_THRESHOLDS.minDurationMs} ms.`,
-          fix: roomToExtend(target) ? { kind: 'extend-end', cueId: cue.id, end: target } : undefined,
+          message: `Only on screen for ${duration} ms; aim for at least ${QUALITY_THRESHOLDS.minDurationMs} ms.${fix?.kind === 'merge-next' ? ' Fix merges it with the next cue.' : ''}`,
+          fix,
         })
       } else {
         const speed = readingSpeed(cleaned, duration)
@@ -347,6 +384,18 @@ export function applyFix(cues: EditableCue[], fix: QualityFix): EditableCue[] {
       return cues.map((cue, position) => (position === index ? { ...cue, end: formatTimestamp(fix.end) } : cue))
     case 'rewrap':
       return cues.map((cue, position) => (position === index ? { ...cue, text: fix.text } : cue))
+    case 'start-at-previous-end': {
+      const previousEnd = index > 0 ? tryParse(cues[index - 1].end) : null
+      if (previousEnd === null) return cues
+      return cues.map((cue, position) => (position === index ? { ...cue, start: formatTimestamp(previousEnd) } : cue))
+    }
+    case 'merge-next': {
+      const next = cues[index + 1]
+      if (!next) return cues
+      const end = tryParse(next.end) ?? tryParse(cues[index].end)
+      const merged: EditableCue = { ...cues[index], end: end === null ? cues[index].end : formatTimestamp(end), text: fix.text }
+      return [...cues.slice(0, index), merged, ...cues.slice(index + 2)]
+    }
     case 'split-cue': {
       const cue = cues[index]
       const start = tryParse(cue.start)
@@ -381,13 +430,31 @@ function uniqueSplitId(sourceId: string, part: number, taken: Set<string>): stri
 export function applyAllFixes(cues: EditableCue[]): { cues: EditableCue[]; applied: number } {
   let current = cues
   let applied = 0
-  for (let iteration = 0; iteration < cues.length * QUALITY_CHECK_IDS.length + 1; iteration += 1) {
-    const next = analyzeCues(current).findings.find((finding) => finding.fix)
-    if (!next?.fix) break
-    const updated = applyFix(current, next.fix)
-    if (updated === current) break
-    current = updated
-    applied += 1
+  for (let iteration = 0; iteration < QUALITY_CHECK_IDS.length * 4; iteration += 1) {
+    const fixes = analyzeCues(current).findings.flatMap((finding) => (finding.fix ? [finding.fix] : []))
+    if (fixes.length === 0) break
+    // Fixes that touch distinct cues are independent, so apply one batch per analysis pass.
+    // Neighbour-touching fixes (trim/shift against the previous cue, merge with the next) reserve both.
+    const touched = new Set<string>()
+    const ids = current.map((cue) => cue.id)
+    let progressed = false
+    for (const fix of fixes) {
+      const index = ids.indexOf(fix.cueId)
+      if (index === -1) continue
+      const affected = fix.kind === 'trim-previous' || fix.kind === 'start-at-previous-end'
+        ? [fix.cueId, ids[index - 1]]
+        : fix.kind === 'merge-next'
+          ? [fix.cueId, ids[index + 1]]
+          : [fix.cueId]
+      if (affected.some((id) => id && touched.has(id))) continue
+      const updated = applyFix(current, fix)
+      if (updated === current) continue
+      affected.forEach((id) => id && touched.add(id))
+      current = updated
+      applied += 1
+      progressed = true
+    }
+    if (!progressed) break
   }
   return { cues: current, applied }
 }
