@@ -36,8 +36,21 @@ function buildPage(page) {
   html = setMeta(html, 'property', 'og:description', page.description)
   html = setMeta(html, 'name', 'twitter:title', page.title)
   html = setMeta(html, 'name', 'twitter:description', page.description)
+  html = setJsonLd(html, page, url)
   html = html.replace('<div id="root"></div>', `<div id="root">${render(page.pathname)}</div>`)
   return html
+}
+
+/** Rewrites the structured-data block so its url/name/description match the page's canonical. */
+function setJsonLd(html, page, url) {
+  const pattern = /(<script type="application\/ld\+json">)([\s\S]*?)(<\/script>)/
+  const match = html.match(pattern)
+  if (!match) throw new Error('Template is missing the JSON-LD script block.')
+  const data = JSON.parse(match[2])
+  data.url = url
+  data.description = page.description
+  if (page.pathname !== '/') data.name = page.title.replace(/\s*\|\s*CaptionStack$/, '')
+  return html.replace(pattern, `$1\n      ${JSON.stringify(data, null, 2).replace(/\n/g, '\n      ')}\n    $3`)
 }
 
 const allPages = pages()
@@ -50,14 +63,14 @@ for (const page of allPages) {
 // GitHub Pages serves 404.html for unknown paths; the home shell keeps the site usable there.
 fs.copyFileSync(templatePath, toAbsolute('dist/404.html'))
 
-const today = new Date().toISOString().slice(0, 10)
+// No <lastmod>: a build date would change on every deploy regardless of content, which search
+// engines learn to ignore.
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${allPages
   .map(
     (page) => `  <url>
     <loc>${SITE_URL}${page.pathname}</loc>
-    <lastmod>${today}</lastmod>
     <changefreq>${page.pathname === '/' ? 'weekly' : 'monthly'}</changefreq>
     <priority>${page.priority.toFixed(1)}</priority>
   </url>`,

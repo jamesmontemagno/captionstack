@@ -369,7 +369,7 @@ function App({ pathname = '/' }: AppProps) {
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="./" aria-label="CaptionStack home">
+        <a className="brand" href="/" aria-label="CaptionStack home">
           <span className="brand-mark"><BrandIcon /></span>
           <span>CaptionStack</span>
         </a>
