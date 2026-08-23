@@ -29,9 +29,19 @@ Plain-text imports receive three-second cue timings. Plain-text exports intentio
 
 No file? Click **Paste caption text** under the drop zone, or press **Ctrl/⌘+V** anywhere on an empty converter. The format is detected from the content (an SRT block, a WebVTT snippet, a YouTube transcript, JSON from an API…), and files on the clipboard are accepted too. Pasted captions default to the file name `pasted-captions`.
 
+## The workspace
+
+Once a file is loaded the page switches to a two-pane workspace on the same URL (so landing pages keep working and nothing needs to reload):
+
+- **Toolbar** — file name, detected format, size, cue count and runtime; **Convert to** format picker; **Undo**; **Copy**; file name and **Download**.
+- **Cues (left)** — the editor with inline quality warnings, plus **Timing** and **Find & replace** tools and the quality report.
+- **Output (right, sticky)** — the converted file, split into one block per cue with light syntax highlighting. It follows the editor's page (50 cues at a time with "… N more cues …" markers), highlights the cue you're editing, and clicking a block jumps the editor to that cue. A **Media preview** tab puts the video/audio player in the same pane.
+
+Under 960px the panes stack with a **Cues / Output** switch; jumping to a cue from the output switches back to the editor.
+
 ## Output, clipboard, and preferences
 
-The result area shows the first three cues by default; **Show full output** switches to the whole converted file in a scrollable code view (capped at 2 MB on screen — download for more). **Copy** puts the latest output on the clipboard, falling back to a legacy copy path where the Clipboard API is unavailable. The theme toggle and the last chosen output format are remembered in `localStorage` (`captionstack:theme`, `captionstack:output-format`); the saved theme is applied before first paint, and conversion landing pages always preselect their own target format.
+**Copy** puts the latest output on the clipboard, falling back to a legacy copy path where the Clipboard API is unavailable. The theme toggle and the last chosen output format are remembered in `localStorage` (`captionstack:theme`, `captionstack:output-format`); the saved theme is applied before first paint, and conversion landing pages always preselect their own target format.
 
 ## Batch conversion
 
@@ -39,7 +49,7 @@ Drop or pick several files at once to convert them together. Each file's format 
 
 ## Editing cues
 
-After importing a file, open **Edit cues** to fix timings and text before exporting:
+The editor is always open in the workspace's left pane:
 
 - Edit each cue's start time, end time, and text inline.
 - Add, delete, split, merge, and reorder cues.

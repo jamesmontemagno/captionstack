@@ -11,6 +11,8 @@ interface MediaPreviewProps {
   cues: EditableCue[]
   /** False while cues contain unparseable timestamps; the track keeps its last good version. */
   cuesAreValid: boolean
+  /** True while the pane is hidden (e.g. the Cues pane is showing on a small screen). */
+  hidden?: boolean
   onControls: (controls: MediaControls | null) => void
   onJump: (cueId: string) => void
 }
@@ -29,7 +31,7 @@ function readableBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewProps) {
+function MediaPreview({ cues, cuesAreValid, hidden = false, onControls, onJump }: MediaPreviewProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [media, setMedia] = useState<{ url: string; name: string; size: number; isAudio: boolean } | null>(null)
@@ -78,7 +80,9 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
 
   useEffect(() => {
     const video = videoRef.current
-    if (!video || !media) {
+    if (!video || !media || hidden) {
+      // Nothing visible to drive: pause so audio can't keep playing from a hidden pane.
+      videoRef.current?.pause()
       onControls(null)
       return
     }
@@ -91,7 +95,7 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
       currentTimeMs: () => Math.round(video.currentTime * 1000),
     })
     return () => onControls(null)
-  }, [media, onControls])
+  }, [media, hidden, onControls])
 
   // Force the track to display; browsers only honour `default` on the first load.
   useEffect(() => {

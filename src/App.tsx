@@ -32,6 +32,7 @@ import QualityReport from './QualityReport'
 import TimingPanel from './TimingPanel'
 import FindReplacePanel from './FindReplacePanel'
 import MediaPreview, { type MediaControls } from './MediaPreview'
+import OutputPane from './OutputPane'
 import BatchPanel from './BatchPanel'
 import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } from './batch'
 import LandingContent from './LandingContent'
@@ -42,8 +43,6 @@ import './App.css'
 
 const MAX_HISTORY = 50
 const PASTED_NAME = 'pasted-captions'
-/** The full-output view shows at most this many characters; larger files are downloaded instead. */
-const FULL_OUTPUT_LIMIT = 2 * 1024 * 1024
 
 function readSavedFormat(): FormatId | null {
   const saved = readPreference(STORAGE_KEYS.outputFormat)
@@ -161,6 +160,18 @@ function App({ pathname = '/' }: AppProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [activeTool, setActiveTool] = useState<'timing' | 'replace' | 'media' | null>(null)
+  const [rightPane, setRightPane] = useState<'output' | 'media'>('output')
+  const [mobilePane, setMobilePane] = useState<'cues' | 'output'>('cues')
+  const [activeCueId, setActiveCueId] = useState<string | null>(null)
+  // Mirrors the CSS breakpoint that stacks the panes, so hidden media can be paused.
+  const [isNarrow, setIsNarrow] = useState(false)
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 960px)')
+    const update = () => setIsNarrow(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
   const [editorPage, setEditorPage] = useState(0)
   const [theme, setTheme] = useState('light')
   const [loadingName, setLoadingName] = useState<string | null>(null)
@@ -211,6 +222,8 @@ function App({ pathname = '/' }: AppProps) {
       setIsEditing(false)
       setActiveTool(null)
       setEditorPage(0)
+      setMobilePane('cues')
+      setActiveCueId(null)
     } catch (caught) {
       if (requestId !== loadRequest.current) return
       setLoaded(null)
@@ -386,6 +399,8 @@ function App({ pathname = '/' }: AppProps) {
     const index = loaded?.cues.findIndex((cue) => cue.id === cueId) ?? -1
     if (index === -1) return
     setIsEditing(true)
+    setMobilePane('cues')
+    setActiveCueId(cueId)
     setEditorPage(Math.floor(index / EDITOR_PAGE_SIZE))
     setPendingFocus(cueId)
   }, [loaded])
@@ -400,6 +415,14 @@ function App({ pathname = '/' }: AppProps) {
       return live?.fix ? applyFix(list, live.fix) : list
     })
   }, [mutateCues])
+
+  const editorRange = useMemo(() => {
+    const total = loaded?.cues.length ?? 0
+    const pageCount = Math.max(1, Math.ceil(total / EDITOR_PAGE_SIZE))
+    const page = Math.min(editorPage, pageCount - 1)
+    const start = page * EDITOR_PAGE_SIZE
+    return { start, end: Math.min(total, start + EDITOR_PAGE_SIZE), pageCount }
+  }, [loaded, editorPage])
 
   const findingsByCue = useMemo(() => {
     const grouped = new Map<string, QualityFinding[]>()
@@ -475,6 +498,8 @@ function App({ pathname = '/' }: AppProps) {
     setOutputName('')
     setIsEditing(false)
     setActiveTool(null)
+    setMobilePane('cues')
+    setActiveCueId(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -487,14 +512,12 @@ function App({ pathname = '/' }: AppProps) {
 
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copyTimer = useRef<number | null>(null)
-  const [showFullOutput, setShowFullOutput] = useState(false)
   const outputLineCount = useMemo(() => {
     if (!serialized) return 0
     let count = 1
     for (let index = serialized.output.indexOf('\n'); index !== -1; index = serialized.output.indexOf('\n', index + 1)) count += 1
     return count
   }, [serialized])
-  const fullOutputText = useMemo(() => (serialized ? serialized.output.slice(0, FULL_OUTPUT_LIMIT) : ''), [serialized])
 
   useEffect(() => () => { if (copyTimer.current) window.clearTimeout(copyTimer.current) }, [])
 
@@ -533,6 +556,7 @@ function App({ pathname = '/' }: AppProps) {
       </header>
 
       <main>
+        {!loaded && (
         <section className="hero-copy" aria-labelledby="page-title">
           <p className="eyebrow">{hero.eyebrow}</p>
           <h1 id="page-title">{hero.title}</h1>
@@ -545,10 +569,180 @@ function App({ pathname = '/' }: AppProps) {
             ))}
           </div>
         </section>
+        )}
 
+        {loaded ? (
+          <section className={`workspace${mobilePane === 'output' ? ' show-output' : ''}`} aria-label="Caption workspace">
+            <h1 className="visually-hidden">{loaded.name === PASTED_NAME ? 'Pasted captions' : loaded.name} — caption workspace</h1>
+            <div className="workspace-bar">
+              <div className="workspace-file">
+                <span className="file-icon"><Icon name="file" size={20} /></span>
+                <div className="file-primary">
+                  <strong>{loaded.name === PASTED_NAME ? 'Pasted captions' : loaded.name}</strong>
+                  <span>{loaded.sourceFormat.toUpperCase()} · {readableBytes(loaded.size)} · {cueCount.toLocaleString()} cues · {serialized ? durationLabel(duration) : '…'}</span>
+                </div>
+                <button className="text-button" type="button" onClick={reset}><Icon name="reset" size={15} />Replace</button>
+              </div>
+
+              <label className="workspace-format">
+                <span>Convert to</span>
+                <select value={outputFormat} onChange={(event) => chooseOutputFormat(event.target.value as FormatId)}>
+                  {formats.map((format) => (
+                    <option key={format.id} value={format.id}>{format.extension} · {format.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="workspace-actions">
+                {loaded.history.length > 0 && (
+                  <button type="button" className="tool-toggle" onClick={undo}><Icon name="reset" size={15} />Undo</button>
+                )}
+                <button
+                  className={`secondary-button${copyState === 'copied' ? ' is-success' : ''}`}
+                  type="button"
+                  onClick={() => void handleCopy()}
+                  disabled={hasCueErrors}
+                  aria-live="polite"
+                >
+                  <Icon name={copyState === 'copied' ? 'check' : 'copy'} size={17} />
+                  {copyState === 'copied' ? 'Copied!' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
+                </button>
+                <div className="workspace-download">
+                  <div className="filename-input">
+                    <input id="output-name" aria-label="File name" value={outputName} onChange={(event) => setOutputName(event.target.value)} />
+                    <span>{getFormat(outputFormat).extension}</span>
+                  </div>
+                  <button className="primary-button" type="button" onClick={() => void handleDownload()} disabled={hasCueErrors || isDownloading} aria-busy={isDownloading}>
+                    <Icon name="download" size={18} />{isDownloading ? 'Preparing…' : 'Download'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {error && <div className="error-message" role="alert">{error}</div>}
+            {hasCueErrors && (
+              <div className="error-message" role="alert">
+                Fix the highlighted cues before exporting. Cues with invalid times can’t be downloaded.
+              </div>
+            )}
+
+            <div className="workspace-switch" role="group" aria-label="Pane">
+              <button type="button" aria-pressed={mobilePane === 'cues'} className={mobilePane === 'cues' ? 'is-active' : undefined} onClick={() => setMobilePane('cues')}>Cues</button>
+              <button type="button" aria-pressed={mobilePane === 'output'} className={mobilePane === 'output' ? 'is-active' : undefined} onClick={() => setMobilePane('output')}>Output</button>
+            </div>
+
+            <div className="workspace-panes">
+              <div className="workspace-pane pane-cues">
+                <div className="pane-head">
+                  <h2>Cues</h2>
+                  <div className="tool-strip" role="group" aria-label="Editing tools">
+                    <button
+                      className={`tool-toggle${activeTool === 'timing' ? ' is-active' : ''}`}
+                      type="button"
+                      aria-pressed={activeTool === 'timing'}
+                      onClick={() => setActiveTool((tool) => (tool === 'timing' ? null : 'timing'))}
+                    >
+                      <Icon name="clock" size={15} />Timing
+                    </button>
+                    <button
+                      className={`tool-toggle${activeTool === 'replace' ? ' is-active' : ''}`}
+                      type="button"
+                      aria-pressed={activeTool === 'replace'}
+                      onClick={() => setActiveTool((tool) => (tool === 'replace' ? null : 'replace'))}
+                    >
+                      <Icon name="search" size={15} />Find &amp; replace
+                    </button>
+                  </div>
+                </div>
+                {activeTool === 'timing' && (
+                  <TimingPanel
+                    cues={loaded.cues}
+                    onApply={(transform) => mutateCues(transform)}
+                  />
+                )}
+                {activeTool === 'replace' && (
+                  <FindReplacePanel
+                    cues={loaded.cues}
+                    onReplaceAll={(transform) => mutateCues(transform)}
+                    onJump={jumpToCueId}
+                  />
+                )}
+                {report ? (
+                  <QualityReport
+                    report={report}
+                    canUndo={loaded.history.length > 0}
+                    onFix={applyFinding}
+                    onFixAll={() => mutateCues((cues) => applyAllFixes(cues).cues)}
+                    onUndo={undo}
+                    onJump={jumpToCue}
+                  />
+                ) : (
+                  <div className="quality-report is-pending" role="status" aria-live="polite">
+                    <div className="quality-summary">
+                      <span className="upload-icon is-spinning quality-pending-icon" aria-hidden="true"><Icon name="spinner" size={16} /></span>
+                      <div className="quality-summary-text"><strong>Checking caption quality…</strong><span>Running checks in the background.</span></div>
+                    </div>
+                  </div>
+                )}
+                <CaptionEditor
+                  cues={loaded.cues}
+                  errors={cueErrors}
+                  findings={findingsByCue}
+                  onFix={applyFinding}
+                  onFocusCue={setActiveCueId}
+                  page={editorPage}
+                  onPageChange={setEditorPage}
+                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { coalesce: true })}
+                  onAdd={(index) => mutateCues((cues) => addCue(cues, index))}
+                  onRemove={(index) => mutateCues((cues) => removeCue(cues, index))}
+                  onMove={(index, direction) => mutateCues((cues) => moveCue(cues, index, direction))}
+                  onSplit={(index) => mutateCues((cues) => splitCue(cues, index))}
+                  onMerge={(index) => mutateCues((cues) => mergeCue(cues, index))}
+                  media={editorMedia}
+                />
+              </div>
+
+              <aside className="workspace-pane pane-output">
+                <div className="pane-head">
+                  <div className="pane-tabs" role="group" aria-label="Right pane">
+                    <button type="button" aria-pressed={rightPane === 'output'} className={rightPane === 'output' ? 'is-active' : undefined} onClick={() => setRightPane('output')}>
+                      {outputFormat.toUpperCase()} output
+                    </button>
+                    <button type="button" aria-pressed={rightPane === 'media'} className={rightPane === 'media' ? 'is-active' : undefined} onClick={() => setRightPane('media')}>
+                      <Icon name="media" size={15} />Media preview
+                    </button>
+                  </div>
+                  {rightPane === 'output' && serialized && (
+                    <span className="pane-meta">{outputLineCount.toLocaleString()} lines · {readableBytes(new Blob([serialized.output]).size)}</span>
+                  )}
+                </div>
+                {rightPane === 'output' ? (
+                  <OutputPane
+                    output={hasCueErrors ? null : serialized?.output ?? null}
+                    format={outputFormat}
+                    cues={loaded.cues}
+                    pageStart={editorRange.start}
+                    pageEnd={editorRange.end}
+                    pageCount={editorRange.pageCount}
+                    activeCueId={activeCueId}
+                    onJump={jumpToCueId}
+                  />
+                ) : (
+                  <MediaPreview
+                    cues={loaded.cues}
+                    cuesAreValid={!hasCueErrors}
+                    hidden={isNarrow && mobilePane !== 'output'}
+                    onControls={setMediaControls}
+                    onJump={jumpToCueId}
+                  />
+                )}
+              </aside>
+            </div>
+          </section>
+        ) : (
         <section className="converter-card" aria-label="Caption converter">
           <div className="step-heading">
-            <span className="step-number">{loaded || batch.readyCount > 0 ? <Icon name="check" size={17} /> : '1'}</span>
+            <span className="step-number">{batch.readyCount > 0 ? <Icon name="check" size={17} /> : '1'}</span>
             <div>
               <h2>{isBatch ? 'Choose your caption files' : 'Choose your caption file'}</h2>
               <p>{isBatch ? `${batch.items.length} ${batch.items.length === 1 ? 'file' : 'files'} · each format is detected separately.` : 'We’ll detect the format automatically. Drop several files to convert them all at once.'}</p>
@@ -576,7 +770,7 @@ function App({ pathname = '/' }: AppProps) {
                 onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }}
               />
             </>
-          ) : !loaded ? (
+          ) : (
             <>
               <button
                 className={`drop-zone${isDragging ? ' is-dragging' : ''}${loadingName ? ' is-loading' : ''}`}
@@ -646,123 +840,13 @@ function App({ pathname = '/' }: AppProps) {
                 </form>
               )}
             </>
-          ) : (
-            <div className="loaded-file">
-              <span className="file-icon"><Icon name="file" size={23} /></span>
-              <div className="file-primary"><strong>{loaded.name === PASTED_NAME ? 'Pasted captions' : loaded.name}</strong><span>{readableBytes(loaded.size)} · {cueCount} cues</span></div>
-              <span className="detected-format">{loaded.sourceFormat.toUpperCase()}</span>
-              <button className="text-button" type="button" onClick={reset}><Icon name="reset" size={16} />Replace</button>
-            </div>
           )}
 
           {error && <div className="error-message" role="alert">{error}</div>}
 
-          {loaded && (
-            <div className="edit-area">
-              <div className="step-heading">
-                <span className="step-number">2</span>
-                <div><h2>Review and edit your cues</h2><p>Fix timings and text before you export. Nothing leaves your browser.</p></div>
-                <div className="tool-strip" role="group" aria-label="Editing tools">
-                  <button
-                    className={`tool-toggle${isEditing ? ' is-active' : ''}`}
-                    type="button"
-                    aria-pressed={isEditing}
-                    onClick={() => setIsEditing((editing) => !editing)}
-                  >
-                    <Icon name="edit" size={15} />Edit cues
-                  </button>
-                  <button
-                    className={`tool-toggle${activeTool === 'timing' ? ' is-active' : ''}`}
-                    type="button"
-                    aria-pressed={activeTool === 'timing'}
-                    onClick={() => setActiveTool((tool) => (tool === 'timing' ? null : 'timing'))}
-                  >
-                    <Icon name="clock" size={15} />Timing
-                  </button>
-                  <button
-                    className={`tool-toggle${activeTool === 'replace' ? ' is-active' : ''}`}
-                    type="button"
-                    aria-pressed={activeTool === 'replace'}
-                    onClick={() => setActiveTool((tool) => (tool === 'replace' ? null : 'replace'))}
-                  >
-                    <Icon name="search" size={15} />Find &amp; replace
-                  </button>
-                  <button
-                    className={`tool-toggle${activeTool === 'media' ? ' is-active' : ''}`}
-                    type="button"
-                    aria-pressed={activeTool === 'media'}
-                    onClick={() => setActiveTool((tool) => (tool === 'media' ? null : 'media'))}
-                  >
-                    <Icon name="media" size={15} />Preview with media
-                  </button>
-                </div>
-              </div>
-              {activeTool === 'timing' && (
-                <TimingPanel
-                  cues={loaded.cues}
-                  onApply={(transform) => mutateCues(transform)}
-                />
-              )}
-              {activeTool === 'replace' && (
-                <FindReplacePanel
-                  cues={loaded.cues}
-                  onReplaceAll={(transform) => mutateCues(transform)}
-                  onJump={jumpToCueId}
-                />
-              )}
-              {activeTool === 'media' && (
-                <MediaPreview
-                  cues={loaded.cues}
-                  cuesAreValid={!hasCueErrors}
-                  onControls={setMediaControls}
-                  onJump={jumpToCueId}
-                />
-              )}
-              {report ? (
-                <QualityReport
-                  report={report}
-                  canUndo={loaded.history.length > 0}
-                  onFix={applyFinding}
-                  onFixAll={() => mutateCues((cues) => applyAllFixes(cues).cues)}
-                  onUndo={undo}
-                  onJump={jumpToCue}
-                />
-              ) : (
-                <div className="quality-report is-pending" role="status" aria-live="polite">
-                  <div className="quality-summary">
-                    <span className="upload-icon is-spinning quality-pending-icon" aria-hidden="true"><Icon name="spinner" size={16} /></span>
-                    <div className="quality-summary-text"><strong>Checking caption quality…</strong><span>Running checks in the background.</span></div>
-                  </div>
-                </div>
-              )}
-              {hasCueErrors && (
-                <div className="error-message" role="alert">
-                  Fix the highlighted cues before exporting. Cues with invalid times can’t be downloaded.
-                </div>
-              )}
-              {isEditing && (
-                <CaptionEditor
-                  cues={loaded.cues}
-                  errors={cueErrors}
-                  findings={findingsByCue}
-                  onFix={applyFinding}
-                  page={editorPage}
-                  onPageChange={setEditorPage}
-                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { coalesce: true })}
-                  onAdd={(index) => mutateCues((cues) => addCue(cues, index))}
-                  onRemove={(index) => mutateCues((cues) => removeCue(cues, index))}
-                  onMove={(index, direction) => mutateCues((cues) => moveCue(cues, index, direction))}
-                  onSplit={(index) => mutateCues((cues) => splitCue(cues, index))}
-                  onMerge={(index) => mutateCues((cues) => mergeCue(cues, index))}
-                  media={editorMedia}
-                />
-              )}
-            </div>
-          )}
-
           <div className={`conversion-area${canPickFormat ? '' : ' is-disabled'}`} aria-disabled={!canPickFormat}>
             <div className="step-heading">
-              <span className="step-number">{loaded && !isBatch ? 3 : 2}</span>
+              <span className="step-number">2</span>
               <div><h2>Choose an output format</h2><p>{isBatch ? 'Every file in the batch converts to this format.' : 'Select what you need on the other side.'}</p></div>
             </div>
             <div className="format-grid">
@@ -820,72 +904,8 @@ function App({ pathname = '/' }: AppProps) {
             </div>
           )}
 
-          {loaded && (
-            <div className="result-area">
-              <div className="flow-summary">
-                <div><span>FROM</span><strong>{loaded.sourceFormat.toUpperCase()}</strong></div>
-                <Icon name="arrow" size={22} />
-                <div><span>TO</span><strong>{outputFormat.toUpperCase()}</strong></div>
-                <div className="stats">
-                  <span><strong>{cueCount}</strong> cues</span>
-                  <span><strong>{serialized ? durationLabel(duration) : '…'}</strong> runtime</span>
-                  <span><strong>{serialized ? readableBytes(new Blob([serialized.output]).size) : '…'}</strong> output</span>
-                </div>
-              </div>
-
-              <div className="preview">
-                <div className="preview-heading">
-                  <h3>{showFullOutput ? `Full ${outputFormat.toUpperCase()} output` : 'Caption preview'}</h3>
-                  <span>
-                    {showFullOutput
-                      ? serialized
-                        ? `${outputLineCount.toLocaleString()} lines${serialized.output.length > FULL_OUTPUT_LIMIT ? ` · showing the first ${readableBytes(FULL_OUTPUT_LIMIT)}` : ''}`
-                        : 'Preparing…'
-                      : `First ${Math.min(3, cueCount)} cues`}
-                    {' · '}
-                    <button type="button" className="text-button" aria-pressed={showFullOutput} onClick={() => setShowFullOutput((value) => !value)}>
-                      {showFullOutput ? 'Show summary' : 'Show full output'}
-                    </button>
-                  </span>
-                </div>
-                {showFullOutput ? (
-                  <pre className="output-view" tabIndex={0} aria-label={`Converted ${outputFormat.toUpperCase()} output`}>
-                    {fullOutputText}
-                  </pre>
-                ) : (
-                  loaded.cues.slice(0, 3).map((cue, index) => (
-                    <div className="cue-row" key={cue.id}>
-                      <span>{index + 1}</span>
-                      <time>{cue.start} → {cue.end}</time>
-                      <p>{cue.text}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="download-row">
-                <label htmlFor="output-name">File name</label>
-                <div className="filename-input">
-                  <input id="output-name" value={outputName} onChange={(event) => setOutputName(event.target.value)} />
-                  <span>{getFormat(outputFormat).extension}</span>
-                </div>
-                <button
-                  className={`secondary-button${copyState === 'copied' ? ' is-success' : ''}`}
-                  type="button"
-                  onClick={() => void handleCopy()}
-                  disabled={hasCueErrors}
-                  aria-live="polite"
-                >
-                  <Icon name={copyState === 'copied' ? 'check' : 'copy'} size={18} />
-                  {copyState === 'copied' ? 'Copied!' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
-                </button>
-                <button className="primary-button" type="button" onClick={() => void handleDownload()} disabled={hasCueErrors || isDownloading} aria-busy={isDownloading}>
-                  <Icon name="download" size={20} />{isDownloading ? 'Preparing file…' : 'Download converted file'}
-                </button>
-              </div>
-            </div>
-          )}
         </section>
+        )}
 
         <section className="trust-row" aria-label="Privacy and compatibility details">
           <div><Icon name="shield" size={22} /><span><strong>100% private</strong>Your files never leave this device.</span></div>
