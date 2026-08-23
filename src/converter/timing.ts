@@ -45,8 +45,23 @@ export function convertFrameRate(cues: EditableCue[], fromFps: number, toFps: nu
 }
 
 /**
- * Linear sync from two reference points: the cue that should start at `firstTarget` and the
- * one that should start at `lastTarget`. Fixes both drift and offset in one step.
+ * Linear retime from two reference points given as (current ms → desired ms) pairs.
+ * Fixes both drift and offset in one step.
+ */
+export function syncByPoints(
+  cues: EditableCue[],
+  first: { sourceMs: number; targetMs: number },
+  last: { sourceMs: number; targetMs: number },
+): EditableCue[] {
+  if (first.sourceMs === last.sourceMs) return cues
+  const factor = (last.targetMs - first.targetMs) / (last.sourceMs - first.sourceMs)
+  if (!Number.isFinite(factor) || factor <= 0) return cues
+  return retime(cues, (ms) => first.targetMs + (ms - first.sourceMs) * factor)
+}
+
+/**
+ * Linear sync from two reference cues: the cue at `first.index` should start at `first.targetMs`
+ * and the cue at `last.index` at `last.targetMs`.
  */
 export function syncToAnchors(
   cues: EditableCue[],
@@ -55,10 +70,8 @@ export function syncToAnchors(
 ): EditableCue[] {
   const a = cues[first.index] ? tryParse(cues[first.index].start) : null
   const b = cues[last.index] ? tryParse(cues[last.index].start) : null
-  if (a === null || b === null || a === b) return cues
-  const factor = (last.targetMs - first.targetMs) / (b - a)
-  if (!Number.isFinite(factor) || factor <= 0) return cues
-  return retime(cues, (ms) => first.targetMs + (ms - a) * factor)
+  if (a === null || b === null) return cues
+  return syncByPoints(cues, { sourceMs: a, targetMs: first.targetMs }, { sourceMs: b, targetMs: last.targetMs })
 }
 
 /** Parses "1.5", "-250ms", "00:00:02.000", "-1:00" into signed milliseconds; null when invalid. */

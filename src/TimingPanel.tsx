@@ -5,7 +5,7 @@ import {
   parseOffset,
   parseTimestamp,
   shiftCues,
-  syncToAnchors,
+  syncByPoints,
   type EditableCue,
 } from './converter'
 
@@ -24,20 +24,19 @@ function tryParse(value: string): number | null {
   }
 }
 
-function Preview({ before, after }: { before: EditableCue[]; after: EditableCue[] }) {
+function Preview({ before, after, total }: { before: EditableCue[]; after: EditableCue[]; total: number }) {
   if (before.length === 0) return null
-  const rows = before.length === 1 ? [0] : [0, before.length - 1]
   return (
     <table className="timing-preview">
       <thead>
         <tr><th scope="col">Cue</th><th scope="col">Now</th><th scope="col">After</th></tr>
       </thead>
       <tbody>
-        {rows.map((index) => (
-          <tr key={index}>
-            <th scope="row">{index === 0 ? 'First' : 'Last'} (#{index + 1})</th>
-            <td>{before[index].start} → {before[index].end}</td>
-            <td className={after[index].start !== before[index].start || after[index].end !== before[index].end ? 'is-changed' : undefined}>
+        {before.map((cue, index) => (
+          <tr key={cue.id}>
+            <th scope="row">{index === 0 ? `First (#1)` : `Last (#${total})`}</th>
+            <td>{cue.start} → {cue.end}</td>
+            <td className={after[index].start !== cue.start || after[index].end !== cue.end ? 'is-changed' : undefined}>
               {after[index].start} → {after[index].end}
             </td>
           </tr>
@@ -54,7 +53,9 @@ function TimingPanel({ cues, onApply }: TimingPanelProps) {
   const [toFps, setToFps] = useState('25')
   const [firstIndex, setFirstIndex] = useState('1')
   const [firstTarget, setFirstTarget] = useState('')
-  const [lastIndex, setLastIndex] = useState(String(cues.length))
+  const [lastIndexInput, setLastIndex] = useState<string | null>(null)
+  // Follows the live cue count until the user types a value.
+  const lastIndex = lastIndexInput ?? String(cues.length)
   const [lastTarget, setLastTarget] = useState('')
 
   const plan = useMemo<{ transform: ((cues: EditableCue[]) => EditableCue[]) | null; label: string; error?: string }>(() => {
@@ -86,22 +87,24 @@ function TimingPanel({ cues, onApply }: TimingPanelProps) {
     if (startA === null || startB === null) return { transform: null, label: '', error: 'Both chosen cues need valid start times.' }
     if ((targetB - targetA) * (startB - startA) <= 0) return { transform: null, label: '', error: 'Target times must keep the cues in the same order.' }
     return {
-      transform: (list) => syncToAnchors(list, { index: a, targetMs: targetA }, { index: b, targetMs: targetB }),
+      transform: (list) => syncByPoints(list, { sourceMs: startA, targetMs: targetA }, { sourceMs: startB, targetMs: targetB }),
       label: `Sync cue ${a + 1} to ${firstTarget.trim()} and cue ${b + 1} to ${lastTarget.trim()}`,
     }
   }, [mode, offset, fromFps, toFps, firstIndex, firstTarget, lastIndex, lastTarget, cues])
 
-  const after = useMemo(() => (plan.transform ? plan.transform(cues) : cues), [plan, cues])
+  // Preview only the sampled cues: transforming 100k+ cues on every keystroke would stall typing.
+  const sample = useMemo(() => (cues.length > 1 ? [cues[0], cues[cues.length - 1]] : cues.slice(0, 1)), [cues])
+  const sampleAfter = useMemo(() => (plan.transform ? plan.transform(sample) : sample), [plan, sample])
 
   return (
     <section className="tool-panel timing-panel" aria-label="Timing tools">
-      <div className="tool-tabs" role="tablist" aria-label="Timing operation">
+      <div className="tool-tabs" role="group" aria-label="Timing operation">
         {([
           ['shift', 'Shift'],
           ['framerate', 'Frame rate'],
           ['sync', 'Two-point sync'],
         ] as Array<[Mode, string]>).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={mode === id} className={mode === id ? 'is-active' : undefined} onClick={() => setMode(id)}>
+          <button key={id} type="button" aria-pressed={mode === id} className={mode === id ? 'is-active' : undefined} onClick={() => setMode(id)}>
             {label}
           </button>
         ))}
@@ -157,7 +160,7 @@ function TimingPanel({ cues, onApply }: TimingPanelProps) {
       )}
 
       {plan.error && <p className="tool-error" role="alert">{plan.error}</p>}
-      <Preview before={cues} after={after} />
+      <Preview before={sample} after={sampleAfter} total={cues.length} />
 
       <div className="tool-actions">
         <button type="button" className="primary-button" disabled={!plan.transform} onClick={() => plan.transform && onApply(plan.transform, plan.label)}>
