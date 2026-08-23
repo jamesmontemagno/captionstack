@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { parseTimestamp, serializeCaptionsAsync, type EditableCue } from './converter'
+import { findActiveCue, parseTimestamp, serializeCaptionsAsync, type EditableCue } from './converter'
 
 /** Imperative hooks the editor uses to talk to the player without re-rendering on every tick. */
 export interface MediaControls {
@@ -51,10 +51,7 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
       return
     }
     setError('')
-    setMedia((current) => {
-      if (current) URL.revokeObjectURL(current.url)
-      return { url: URL.createObjectURL(file), name: file.name, size: file.size, isAudio: file.type.startsWith('audio/') }
-    })
+    setMedia({ url: URL.createObjectURL(file), name: file.name, size: file.size, isAudio: file.type.startsWith('audio/') })
   }, [])
 
   // Rebuild the WebVTT track whenever the cues change; the media element keeps playing.
@@ -64,19 +61,14 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
     const timer = window.setTimeout(() => {
       serializeCaptionsAsync(cues, 'vtt')
         .then(({ output }) => {
-          if (cancelled) return
-          const url = URL.createObjectURL(new Blob([output], { type: 'text/vtt' }))
-          setTrackUrl((previous) => {
-            if (previous) window.setTimeout(() => URL.revokeObjectURL(previous), 1000)
-            return url
-          })
+          if (!cancelled) setTrackUrl(URL.createObjectURL(new Blob([output], { type: 'text/vtt' })))
         })
         .catch(() => { /* keep the previous track */ })
     }, 150)
     return () => { cancelled = true; window.clearTimeout(timer) }
   }, [cues, cuesAreValid, media])
 
-  // Release everything on unmount or when the media is removed.
+  // Each object URL is revoked exactly once: when it is replaced, removed, or the panel unmounts.
   useEffect(() => () => {
     if (media) URL.revokeObjectURL(media.url)
   }, [media])
@@ -94,6 +86,7 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
       seek: (ms) => {
         video.currentTime = Math.max(0, ms / 1000)
         video.focus({ preventScroll: true })
+        void video.play().catch(() => { /* autoplay policies may refuse; the scrubber still moved */ })
       },
       currentTimeMs: () => Math.round(video.currentTime * 1000),
     })
@@ -117,19 +110,12 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
     const video = videoRef.current
     if (!video) return
     const now = Math.round(video.currentTime * 1000)
-    const index = timings.findIndex((timing) => timing.start !== null && timing.end !== null && now >= timing.start && now < timing.end)
-    setActiveIndex(index)
+    setActiveIndex(findActiveCue(timings, now))
   }
 
   const removeMedia = () => {
-    setMedia((current) => {
-      if (current) URL.revokeObjectURL(current.url)
-      return null
-    })
-    setTrackUrl((current) => {
-      if (current) URL.revokeObjectURL(current)
-      return null
-    })
+    setMedia(null)
+    setTrackUrl(null)
     setActiveIndex(-1)
     if (inputRef.current) inputRef.current.value = ''
   }
@@ -164,7 +150,6 @@ function MediaPreview({ cues, cuesAreValid, onControls, onJump }: MediaPreviewPr
               controls
               playsInline
               preload="metadata"
-              crossOrigin="anonymous"
               onTimeUpdate={handleTimeUpdate}
               onSeeked={handleTimeUpdate}
             >
