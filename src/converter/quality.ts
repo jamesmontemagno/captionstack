@@ -1,6 +1,7 @@
 import { isBlockingError, validateCues, type EditableCue } from './edit'
 import { parseTimestamp } from './parse'
 import { formatTimestamp } from './serialize'
+import { splitSpeaker } from './speakers'
 
 export type QualitySeverity = 'error' | 'warning'
 
@@ -315,8 +316,14 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
           const nextEnd = ends[index + 1]
           const nextText = next ? cleanCueText(next.text) : ''
           if (next && nextStart !== null && nextEnd !== null && nextStart - end <= 250 && nextEnd > start) {
-            const merged = wrapCueText(`${cleaned} ${nextText}`.trim())
-            if (merged !== null) fix = { kind: 'merge-next', cueId: cue.id, text: merged }
+            // Never merge two speakers' lines into one cue; strip a repeated label from the second.
+            const mine = splitSpeaker(cleaned)
+            const theirs = splitSpeaker(nextText)
+            const sameSpeaker = (mine?.speaker ?? null) === (theirs?.speaker ?? null)
+            if (sameSpeaker) {
+              const merged = wrapCueText(`${cleaned} ${theirs ? theirs.text : nextText}`.trim())
+              if (merged !== null) fix = { kind: 'merge-next', cueId: cue.id, text: merged }
+            }
           }
         }
         push({

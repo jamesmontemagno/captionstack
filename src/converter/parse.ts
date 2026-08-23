@@ -260,10 +260,16 @@ interface TranscriptEntry {
   text: string
 }
 
+/** A speaker name is short and contains no sentence punctuation; anything else is caption text. */
 function cleanSpeaker(name: string | undefined): string | undefined {
   const trimmed = name?.trim()
-  if (!trimmed || trimmed.split(/\s+/).length > 3) return undefined
+  if (!trimmed || trimmed.split(/\s+/).length > 3 || /[.!?,;]/.test(trimmed)) return undefined
   return trimmed
+}
+
+/** Rejoins a rejected "speaker" capture with the text so no words are lost. */
+function withPrefix(prefix: string | undefined, text: string): string {
+  return prefix && prefix.trim() ? `${prefix.trim()}: ${text.trim()}` : text.trim()
 }
 
 /**
@@ -294,10 +300,12 @@ function parseTranscriptEntries(content: string): TranscriptEntry[] | null {
       const inline = line.match(INLINE_PATTERNS[0])
       const inlineSpeakerFirst = inline ? null : line.match(INLINE_PATTERNS[1])
       if (inline) {
-        entries.push({ start: parseTimestamp(inline[1]), speaker: cleanSpeaker(inline[2]), text: inline[3].trim() })
+        const speaker = cleanSpeaker(inline[2])
+        entries.push({ start: parseTimestamp(inline[1]), speaker, text: speaker ? inline[3].trim() : withPrefix(inline[2], inline[3]) })
         matchedAny = true
       } else if (inlineSpeakerFirst) {
-        entries.push({ start: parseTimestamp(inlineSpeakerFirst[2]), speaker: cleanSpeaker(inlineSpeakerFirst[1]), text: inlineSpeakerFirst[3].trim() })
+        const speaker = cleanSpeaker(inlineSpeakerFirst[1])
+        entries.push({ start: parseTimestamp(inlineSpeakerFirst[2]), speaker, text: speaker ? inlineSpeakerFirst[3].trim() : withPrefix(inlineSpeakerFirst[1], inlineSpeakerFirst[3]) })
         matchedAny = true
       } else if (entries.length > 0 && matchedAny) {
         // Continuation line of the previous inline entry.

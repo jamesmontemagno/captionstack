@@ -79,3 +79,16 @@ describe('transcript import', () => {
     expect(parseCaptions(blockTranscript, 'pasted-captions').cues[0].start).toBe(600)
   })
 })
+
+describe('transcript edge cases', () => {
+  it('keeps words before a clause colon when the prefix is not a speaker', () => {
+    const { cues } = parseCaptions('00:10 The meeting starts at noon: bring food\n00:14 Then we go home', 'a.txt')
+    expect(cues[0].text).toBe('The meeting starts at noon: bring food')
+    expect(cues[1].text).toBe('Then we go home')
+  })
+
+  it('does not promote a short sentence to a speaker in block form', () => {
+    const { cues } = parseCaptions('00:10\nYeah, totally.\nAnd then we went on and on.\n\n00:14\nOkay.\nSure thing.', 'b.txt')
+    expect(cues.map((cue) => cue.text)).toEqual(['Yeah, totally.\nAnd then we went on and on.', 'Okay.\nSure thing.'])
+  })
+})

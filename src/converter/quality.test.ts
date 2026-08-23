@@ -249,3 +249,22 @@ describe('applyAllFixes', () => {
     expect(result.cues).toBe(editable)
   })
 })
+
+describe('merge-next and speakers', () => {
+  it('never merges cues from different speakers', () => {
+    const editable = toEditableCues([
+      { start: 1000, end: 1400, text: 'James: yeah' },
+      { start: 1400, end: 3000, text: 'Frank: right, exactly' },
+    ])
+    expect(analyzeCues(editable).findings.find((finding) => finding.check === 'short-duration')?.fix).toBeUndefined()
+  })
+
+  it('merges the same speaker and drops the repeated label', () => {
+    const editable = toEditableCues([
+      { start: 1000, end: 1400, text: 'James: yeah' },
+      { start: 1400, end: 3000, text: 'James: right, exactly' },
+    ])
+    const finding = analyzeCues(editable).findings.find((f) => f.check === 'short-duration')
+    expect(finding?.fix).toMatchObject({ kind: 'merge-next', text: 'James: yeah right, exactly' })
+  })
+})
