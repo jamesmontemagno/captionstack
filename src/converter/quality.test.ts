@@ -85,14 +85,50 @@ describe('analyzeCues', () => {
     expect(applyFix(editable, finding.fix!)[0].text).toBe('Hello there')
   })
 
-  it('flags long lines and too many lines without a fix', () => {
-    const report = analyzeCues(cues([
-      { start: 1000, end: 9000, text: 'This single line of caption text is far too long to read.' },
-      { start: 10000, end: 16000, text: 'one\ntwo\nthree' },
-    ]))
-    expect(byCheck(report.findings, 'long-line')).toHaveLength(1)
-    expect(byCheck(report.findings, 'too-many-lines')).toHaveLength(1)
-    expect(report.fixableCount).toBe(0)
+  it('offers to re-wrap a long single line that fits in two lines', () => {
+    const editable = cues([{ start: 1000, end: 9000, text: 'This single line of caption text is far too long to read.' }])
+    const [finding] = byCheck(analyzeCues(editable).findings, 'long-line')
+    expect(finding.fix).toMatchObject({ kind: 'rewrap' })
+    const fixed = applyFix(editable, finding.fix!)
+    expect(fixed).toHaveLength(1)
+    const lines = fixed[0].text.split('\n')
+    expect(lines).toHaveLength(2)
+    expect(lines.every((line) => line.length <= 42)).toBe(true)
+    expect(fixed[0].text.replace(/\n/g, ' ')).toBe(editable[0].text)
+    expect(analyzeCues(fixed).findings).toEqual([])
+  })
+
+  it('splits a cue into two or three when it cannot be re-wrapped, sharing the timing by text length', () => {
+    const long = 'The quick brown fox jumps over the lazy dog while the patient grey cat watches from the warm windowsill and the rain keeps falling on the quiet street outside.'
+    const editable = cues([{ start: 0, end: 12000, text: long }, { start: 20000, end: 22000, text: 'Next.' }])
+    const [finding] = byCheck(analyzeCues(editable).findings, 'long-line')
+    expect(finding.fix?.kind).toBe('split-cue')
+    expect(finding.message).toContain('splits it into')
+    const fixed = applyFix(editable, finding.fix!)
+    const parts = fixed.slice(0, fixed.length - 1)
+    expect(parts.length).toBeGreaterThanOrEqual(2)
+    expect(parts.length).toBeLessThanOrEqual(3)
+    expect(parts.map((cue) => cue.text.replace(/\n/g, ' ')).join(' ')).toBe(long)
+    expect(parts[0].id).toBe(editable[0].id)
+    expect(parts[0].start).toBe('00:00:00.000')
+    expect(parts[parts.length - 1].end).toBe('00:00:12.000')
+    for (let index = 1; index < parts.length; index += 1) expect(parts[index].start).toBe(parts[index - 1].end)
+    expect(byCheck(analyzeCues(fixed).findings, 'long-line')).toEqual([])
+    expect(byCheck(analyzeCues(fixed).findings, 'too-many-lines')).toEqual([])
+  })
+
+  it('re-wraps three short lines into two and leaves the fix on one finding only', () => {
+    const report = analyzeCues(cues([{ start: 10000, end: 16000, text: 'one\ntwo\nthree' }]))
+    const [finding] = byCheck(report.findings, 'too-many-lines')
+    expect(finding.fix).toMatchObject({ kind: 'rewrap', text: 'one two three' })
+    const both = analyzeCues(cues([{ start: 0, end: 30000, text: 'a rather long first line that goes well past the limit\nb\nc' }]))
+    expect(byCheck(both.findings, 'long-line')[0].fix).toBeDefined()
+    expect(byCheck(both.findings, 'too-many-lines')[0].fix).toBeUndefined()
+  })
+
+  it('offers no layout fix for an unbreakable word', () => {
+    const report = analyzeCues(cues([{ start: 0, end: 5000, text: 'Supercalifragilisticexpialidociouslylongwordwithoutanybreaks' }]))
+    expect(byCheck(report.findings, 'long-line')[0].fix).toBeUndefined()
   })
 
   it('extends a too-short cue only when there is room before the next cue', () => {
@@ -145,7 +181,7 @@ describe('applyAllFixes', () => {
       { start: 1000, end: 4000, text: ' Padded text ' },
       { start: 3000, end: 6000, text: 'Overlapping cue.' },
       { start: 6000, end: 8000, text: '' },
-      { start: 8000, end: 20000, text: 'A very long line of caption text that nobody can fix automatically.' },
+      { start: 8000, end: 20000, text: 'A very long line of caption text with an Unbreakablewordthatisfarlongerthanfortytwocharacters.' },
     ])
     const { cues: fixed, applied } = applyAllFixes(editable)
     expect(applied).toBe(3)
@@ -154,6 +190,13 @@ describe('applyAllFixes', () => {
     const report = analyzeCues(fixed)
     expect(report.fixableCount).toBe(0)
     expect(report.findings.map((finding) => finding.check)).toEqual(['long-line'])
+  })
+
+  it('fixes long lines as part of fix-all', () => {
+    const editable = cues([{ start: 0, end: 10000, text: 'This single line of caption text is far too long to read comfortably.' }])
+    const { cues: fixed, applied } = applyAllFixes(editable)
+    expect(applied).toBe(1)
+    expect(analyzeCues(fixed).findings).toEqual([])
   })
 
   it('is a no-op for clean input', () => {

@@ -67,8 +67,8 @@ Every imported or edited cue list is analyzed before export. The report above th
 | No empty cues | Warning | Remove the cue |
 | Clean whitespace | Warning | Trim edges, collapse spaces, drop blank lines |
 | Minimum duration (≥ 700 ms) | Warning | Extend to 1 s when the next cue leaves room |
-| Line length (≤ 42 chars) | Warning | — |
-| Line count (≤ 2 lines) | Warning | — |
+| Line length (≤ 42 chars) | Warning | Re-wrap into balanced lines; if it still won't fit, split the cue into 2–3 cues with timing shared by text length |
+| Line count (≤ 2 lines) | Warning | Same re-wrap / split as line length |
 | Reading speed (≤ 20 chars/s) | Warning | Extend the end when the next cue leaves room |
 
 Fixes are only offered when the result is unambiguous, and **Undo** reverts any fix or structural edit.
