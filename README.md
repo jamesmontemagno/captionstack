@@ -73,6 +73,10 @@ The **Timing** panel in the edit step retimes the whole cue list in one reversib
 
 A preview shows the first and last cue before and after; **Apply** records the change in the Undo history.
 
+## Preview with media
+
+**Preview with media** in the edit step lets you open a local video or audio file (never uploaded) and watch the captions play over it. Captions are delivered through a native `<track>` built from the current cues as WebVTT, so edits, fixes, and timing changes show up live. The panel shows which cue is on screen with a link into the editor, and each cue in the editor gains **▶ play from here**, **⇤ set start to playhead**, and **⇥ set end to playhead** — all recorded in the Undo history.
+
 ## Find and replace
 
 **Find & replace** in the edit step searches every cue as you type, with *Match case*, *Whole word* (Unicode-aware), and *Regular expression* options. Matches are listed per cue with a highlighted snippet and a link that opens the editor at that cue. **Replace all** applies in one reversible step (Undo in the quality report); an empty replacement deletes matches, and in regex mode the replacement supports `$1`, `$<name>`, and `$&`.

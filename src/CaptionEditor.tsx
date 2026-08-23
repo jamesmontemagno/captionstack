@@ -14,6 +14,12 @@ interface CaptionEditorProps {
   onMove: (index: number, direction: -1 | 1) => void
   onSplit: (index: number) => void
   onMerge: (index: number) => void
+  /** Present while a media preview is loaded; enables seek / set-from-playhead actions. */
+  media?: {
+    seek: (index: number) => void
+    setStart: (index: number) => void
+    setEnd: (index: number) => void
+  }
 }
 
 const editorIcons = {
@@ -23,6 +29,9 @@ const editorIcons = {
   down: <path d="M12 5v14m0 0l6-6m-6 6l-6-6" />,
   split: <><path d="M12 4v16" /><path d="M7 9l-3 3 3 3M17 9l3 3-3 3" /></>,
   merge: <><path d="M12 4v16" /><path d="M4 9l3 3-3 3M20 9l-3 3 3 3" /></>,
+  play: <path d="M8 5v14l11-7z" />,
+  setStart: <><path d="M5 5v14" /><path d="M19 12H8m0 0l4-4m-4 4l4 4" /></>,
+  setEnd: <><path d="M19 5v14" /><path d="M5 12h11m0 0l-4-4m4 4l-4 4" /></>,
 } as const
 
 function EditorIcon({ name, size = 17 }: { name: keyof typeof editorIcons; size?: number }) {
@@ -44,7 +53,7 @@ function Pager({ page, pageCount, start, end, total, onPageChange }: { page: num
   )
 }
 
-function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge }: CaptionEditorProps) {
+function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge, media }: CaptionEditorProps) {
   const pageCount = Math.max(1, Math.ceil(cues.length / EDITOR_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
   const start = currentPage * EDITOR_PAGE_SIZE
@@ -88,6 +97,20 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                   </label>
                 </div>
                 <div className="editor-cue-actions">
+                  {media && (
+                    <>
+                      <button type="button" className="icon-button is-media" title="Play from this cue" aria-label={`Play media from cue ${index + 1}`} onClick={() => media.seek(index)}>
+                        <EditorIcon name="play" />
+                      </button>
+                      <button type="button" className="icon-button is-media" title="Set start to playhead" aria-label={`Set cue ${index + 1} start to the current media time`} onClick={() => media.setStart(index)}>
+                        <EditorIcon name="setStart" />
+                      </button>
+                      <button type="button" className="icon-button is-media" title="Set end to playhead" aria-label={`Set cue ${index + 1} end to the current media time`} onClick={() => media.setEnd(index)}>
+                        <EditorIcon name="setEnd" />
+                      </button>
+                      <span className="editor-actions-divider" aria-hidden="true" />
+                    </>
+                  )}
                   <button type="button" className="icon-button" title="Move up" aria-label={`Move cue ${index + 1} up`} disabled={index === 0} onClick={() => onMove(index, -1)}>
                     <EditorIcon name="up" />
                   </button>

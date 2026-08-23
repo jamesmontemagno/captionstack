@@ -5,12 +5,14 @@ import {
   applyAllFixes,
   applyFix,
   formats,
+  formatTimestamp,
   getFormat,
   hasBlockingErrors,
   isFormatId,
   loadCaptionsAsync,
   mergeCue,
   moveCue,
+  parseTimestamp,
   removeCue,
   serializeCaptionsAsync,
   splitCue,
@@ -28,6 +30,7 @@ import CaptionEditor, { EDITOR_PAGE_SIZE } from './CaptionEditor'
 import QualityReport from './QualityReport'
 import TimingPanel from './TimingPanel'
 import FindReplacePanel from './FindReplacePanel'
+import MediaPreview, { type MediaControls } from './MediaPreview'
 import BatchPanel from './BatchPanel'
 import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } from './batch'
 import LandingContent from './LandingContent'
@@ -67,7 +70,7 @@ function BrandIcon() {
   )
 }
 
-function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy' | 'search'; size?: number }) {
+function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy' | 'search' | 'media'; size?: number }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
     file: <><path d="M6 2.75h7l5 5V21.25H6z" /><path d="M13 2.75v5h5M9 13h6M9 17h6" /></>,
@@ -83,6 +86,7 @@ function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'downlo
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
     copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>,
     search: <><circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" /></>,
+    media: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M10 9.5v5l4.5-2.5z" /></>,
   }
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
@@ -155,7 +159,7 @@ function App({ pathname = '/' }: AppProps) {
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
-  const [activeTool, setActiveTool] = useState<'timing' | 'replace' | null>(null)
+  const [activeTool, setActiveTool] = useState<'timing' | 'replace' | 'media' | null>(null)
   const [editorPage, setEditorPage] = useState(0)
   const [theme, setTheme] = useState('light')
   const [loadingName, setLoadingName] = useState<string | null>(null)
@@ -386,6 +390,29 @@ function App({ pathname = '/' }: AppProps) {
   }, [loaded])
 
   const jumpToCue = useCallback((finding: QualityFinding) => jumpToCueId(finding.cueId), [jumpToCueId])
+
+  // Media preview bridge: the player registers imperative controls; the editor drives them.
+  const [mediaControls, setMediaControls] = useState<MediaControls | null>(null)
+  const editorMedia = useMemo(() => {
+    if (!mediaControls) return undefined
+    const setBound = (index: number, field: 'start' | 'end') => {
+      const value = formatTimestamp(mediaControls.currentTimeMs())
+      mutateCues((list) => updateCue(list, index, { [field]: value }))
+    }
+    return {
+      seek: (index: number) => {
+        const start = loaded?.cues[index]?.start
+        if (start === undefined) return
+        try {
+          mediaControls.seek(parseTimestamp(start))
+        } catch {
+          // Unparseable start time while mid-edit: nothing to seek to.
+        }
+      },
+      setStart: (index: number) => setBound(index, 'start'),
+      setEnd: (index: number) => setBound(index, 'end'),
+    }
+  }, [mediaControls, loaded, mutateCues])
 
   useEffect(() => {
     if (!pendingFocus) return
@@ -640,6 +667,14 @@ function App({ pathname = '/' }: AppProps) {
                   >
                     <Icon name="search" size={15} />Find &amp; replace
                   </button>
+                  <button
+                    className={`tool-toggle${activeTool === 'media' ? ' is-active' : ''}`}
+                    type="button"
+                    aria-pressed={activeTool === 'media'}
+                    onClick={() => setActiveTool((tool) => (tool === 'media' ? null : 'media'))}
+                  >
+                    <Icon name="media" size={15} />Preview with media
+                  </button>
                 </div>
               </div>
               {activeTool === 'timing' && (
@@ -652,6 +687,14 @@ function App({ pathname = '/' }: AppProps) {
                 <FindReplacePanel
                   cues={loaded.cues}
                   onReplaceAll={(transform) => mutateCues(transform)}
+                  onJump={jumpToCueId}
+                />
+              )}
+              {activeTool === 'media' && (
+                <MediaPreview
+                  cues={loaded.cues}
+                  cuesAreValid={!hasCueErrors}
+                  onControls={setMediaControls}
                   onJump={jumpToCueId}
                 />
               )}
@@ -689,6 +732,7 @@ function App({ pathname = '/' }: AppProps) {
                   onMove={(index, direction) => mutateCues((cues) => moveCue(cues, index, direction))}
                   onSplit={(index) => mutateCues((cues) => splitCue(cues, index))}
                   onMerge={(index) => mutateCues((cues) => mergeCue(cues, index))}
+                  media={editorMedia}
                 />
               )}
             </div>
