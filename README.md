@@ -51,6 +51,10 @@ Every imported or edited cue list is analyzed before export. The report above th
 
 Fixes are only offered when the result is unambiguous, and **Undo** reverts any fix or structural edit.
 
+## Performance
+
+Parsing, quality analysis, and serialization run in a Web Worker (`src/converter/worker.ts`), so dropping a 10 MB file or editing a long cue list never freezes the page. The editor renders 50 cues per page, and the quality report lists findings in batches of 100. Browsers without module-worker support (and the test/prerender environments) fall back to the same code on the main thread.
+
 ## Local development
 
 ```bash

@@ -198,6 +198,21 @@ h1 em {
   background: var(--cp-accent-soft);
 }
 
+.drop-zone.is-loading {
+  border-style: solid;
+  border-color: var(--cp-border);
+  background: var(--cp-bg-elevated);
+  cursor: progress;
+}
+
+.upload-icon.is-spinning svg {
+  animation: cp-spin 900ms linear infinite;
+}
+
+@keyframes cp-spin {
+  to { transform: rotate(360deg); }
+}
+
 .upload-icon {
   width: 52px;
   height: 52px;
@@ -617,6 +632,18 @@ h1 em {
   border-left-color: var(--cp-danger);
 }
 
+.quality-report.is-pending {
+  border-left-color: var(--cp-border-strong);
+}
+
+.quality-pending-icon {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  color: var(--cp-text-muted);
+}
+
 .quality-summary {
   display: flex;
   align-items: center;
@@ -764,6 +791,11 @@ h1 em {
   font-size: 13px;
 }
 
+.quality-show-more {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
 .quality-passed-list {
   margin-top: 8px;
 }
@@ -778,6 +810,26 @@ h1 em {
 
 .caption-editor {
   margin-top: 16px;
+}
+
+.editor-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-list + .editor-pager {
+  margin: 12px 0 0;
+}
+
+.editor-pager .text-button:disabled {
+  color: var(--cp-text-soft);
+  cursor: not-allowed;
 }
 
 .editor-list {
@@ -1114,4 +1166,12 @@ footer a:hover {
     scroll-behavior: auto;
     transition-duration: 0.01ms;
   }
+
+  .upload-icon.is-spinning svg {
+    animation: cp-pulse 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes cp-pulse {
+  50% { opacity: 0.35; }
 }
