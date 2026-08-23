@@ -15,6 +15,9 @@ interface OutputPaneProps {
 
 const TOKEN = /(\d{1,2}:\d{2}:\d{2}[.,]\d{3}|\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]|-->|<\/?[\w:-]+(?:\s[^>]*)?>|"(?:[^"\\]|\\.)*"(?=\s*:)|\b\d+\b(?=\n|,|$))/g
 
+/** Plain-text cap for output that couldn't be split into cue chunks. */
+const FALLBACK_LIMIT = 512 * 1024
+
 /** Light, format-agnostic highlighting: timestamps, arrows, XML tags, JSON keys, bare numbers. */
 function highlight(text: string): ReactNode[] {
   const nodes: ReactNode[] = []
@@ -34,6 +37,9 @@ function highlight(text: string): ReactNode[] {
 function OutputPane({ output, format, cues, pageStart, pageEnd, pageCount, activeCueId, onJump }: OutputPaneProps) {
   const segments = useMemo(() => (output === null ? null : splitOutput(output, format, cues.length)), [output, format, cues.length])
   const activeRef = useRef<HTMLButtonElement>(null)
+  // The unmapped fallback (chunk count mismatch, e.g. blank lines inside TXT cues) shows plain
+  // text: highlighting a multi-megabyte string would create hundreds of thousands of nodes.
+  const fallbackText = useMemo(() => (output === null ? '' : output.slice(0, FALLBACK_LIMIT)), [output])
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -75,7 +81,7 @@ function OutputPane({ output, format, cues, pageStart, pageEnd, pageCount, activ
           {segments.footer && <span className="output-chrome">{highlight(segments.footer)}</span>}
         </pre>
       ) : (
-        <pre className="output-code">{highlight(output.slice(0, 2 * 1024 * 1024))}</pre>
+        <pre className="output-code">{fallbackText}{output.length > FALLBACK_LIMIT ? '\n…' : ''}</pre>
       )}
       {pageCount > 1 && mapped && (
         <p className="output-foot">Showing cues {pageStart + 1}–{pageEnd} of {cues.length.toLocaleString()} to match the editor page. Download or copy for the whole file.</p>

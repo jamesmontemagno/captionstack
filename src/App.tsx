@@ -163,6 +163,15 @@ function App({ pathname = '/' }: AppProps) {
   const [rightPane, setRightPane] = useState<'output' | 'media'>('output')
   const [mobilePane, setMobilePane] = useState<'cues' | 'output'>('cues')
   const [activeCueId, setActiveCueId] = useState<string | null>(null)
+  // Mirrors the CSS breakpoint that stacks the panes, so hidden media can be paused.
+  const [isNarrow, setIsNarrow] = useState(false)
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 960px)')
+    const update = () => setIsNarrow(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
   const [editorPage, setEditorPage] = useState(0)
   const [theme, setTheme] = useState('light')
   const [loadingName, setLoadingName] = useState<string | null>(null)
@@ -213,6 +222,8 @@ function App({ pathname = '/' }: AppProps) {
       setIsEditing(false)
       setActiveTool(null)
       setEditorPage(0)
+      setMobilePane('cues')
+      setActiveCueId(null)
     } catch (caught) {
       if (requestId !== loadRequest.current) return
       setLoaded(null)
@@ -487,6 +498,8 @@ function App({ pathname = '/' }: AppProps) {
     setOutputName('')
     setIsEditing(false)
     setActiveTool(null)
+    setMobilePane('cues')
+    setActiveCueId(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -560,6 +573,7 @@ function App({ pathname = '/' }: AppProps) {
 
         {loaded ? (
           <section className={`workspace${mobilePane === 'output' ? ' show-output' : ''}`} aria-label="Caption workspace">
+            <h1 className="visually-hidden">{loaded.name === PASTED_NAME ? 'Pasted captions' : loaded.name} — caption workspace</h1>
             <div className="workspace-bar">
               <div className="workspace-file">
                 <span className="file-icon"><Icon name="file" size={20} /></span>
@@ -717,6 +731,7 @@ function App({ pathname = '/' }: AppProps) {
                   <MediaPreview
                     cues={loaded.cues}
                     cuesAreValid={!hasCueErrors}
+                    hidden={isNarrow && mobilePane !== 'output'}
                     onControls={setMediaControls}
                     onJump={jumpToCueId}
                   />
