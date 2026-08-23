@@ -73,6 +73,10 @@ The **Timing** panel in the edit step retimes the whole cue list in one reversib
 
 A preview shows the first and last cue before and after; **Apply** records the change in the Undo history.
 
+## Find and replace
+
+**Find & replace** in the edit step searches every cue as you type, with *Match case*, *Whole word* (Unicode-aware), and *Regular expression* options. Matches are listed per cue with a highlighted snippet and a link that opens the editor at that cue. **Replace all** applies in one reversible step (Undo in the quality report); an empty replacement deletes matches, and in regex mode the replacement supports `$1`, `$<name>`, and `$&`.
+
 ## Performance
 
 Parsing, quality analysis, and serialization run in a Web Worker (`src/converter/worker.ts`), so dropping a 10 MB file or editing a long cue list never freezes the page. The editor renders 50 cues per page, and the quality report lists findings in batches of 100. Browsers without module-worker support (and the test/prerender environments) fall back to the same code on the main thread.
