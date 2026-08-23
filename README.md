@@ -25,6 +25,10 @@ A growing collection of private, browser-based caption tools. CaptionStack curre
 
 Plain-text imports receive three-second cue timings. Plain-text exports intentionally omit timing.
 
+## Pasting captions
+
+No file? Click **Paste caption text** under the drop zone, or press **Ctrl/⌘+V** anywhere on an empty converter. The format is detected from the content (an SRT block, a WebVTT snippet, a YouTube transcript, JSON from an API…), and files on the clipboard are accepted too. Pasted captions default to the file name `pasted-captions`.
+
 ## Batch conversion
 
 Drop or pick several files at once to convert them together. Each file's format is detected independently, per-file errors (unsupported type, over 10 MB, malformed content) are shown inline without affecting the others, and the successful conversions download as a single ZIP archive (`captionstack-<count>-files-<format>.zip`). The archive is built in the browser with a dependency-free ZIP writer (`src/converter/zip.ts`).
