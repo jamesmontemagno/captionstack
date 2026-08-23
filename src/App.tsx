@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   addCue,
+  analyzeCues,
   analyzeCuesAsync,
   applyAllFixes,
   applyFix,
@@ -391,6 +392,25 @@ function App({ pathname = '/' }: AppProps) {
 
   const jumpToCue = useCallback((finding: QualityFinding) => jumpToCueId(finding.cueId), [jumpToCueId])
 
+  // The rendered report can lag the cue list, so a fix is re-derived from the live cues at click
+  // time: if the finding no longer holds (the user already fixed it), nothing is applied.
+  const applyFinding = useCallback((finding: QualityFinding) => {
+    mutateCues((list) => {
+      const live = analyzeCues(list).findings.find((candidate) => candidate.id === finding.id)
+      return live?.fix ? applyFix(list, live.fix) : list
+    })
+  }, [mutateCues])
+
+  const findingsByCue = useMemo(() => {
+    const grouped = new Map<string, QualityFinding[]>()
+    for (const finding of report?.findings ?? []) {
+      const list = grouped.get(finding.cueId)
+      if (list) list.push(finding)
+      else grouped.set(finding.cueId, [finding])
+    }
+    return grouped
+  }, [report])
+
   // Media preview bridge: the player registers imperative controls; the editor drives them.
   const [mediaControls, setMediaControls] = useState<MediaControls | null>(null)
   const editorMedia = useMemo(() => {
@@ -702,7 +722,7 @@ function App({ pathname = '/' }: AppProps) {
                 <QualityReport
                   report={report}
                   canUndo={loaded.history.length > 0}
-                  onFix={(finding) => finding.fix && mutateCues((cues) => applyFix(cues, finding.fix!))}
+                  onFix={applyFinding}
                   onFixAll={() => mutateCues((cues) => applyAllFixes(cues).cues)}
                   onUndo={undo}
                   onJump={jumpToCue}
@@ -724,6 +744,8 @@ function App({ pathname = '/' }: AppProps) {
                 <CaptionEditor
                   cues={loaded.cues}
                   errors={cueErrors}
+                  findings={findingsByCue}
+                  onFix={applyFinding}
                   page={editorPage}
                   onPageChange={setEditorPage}
                   onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { coalesce: true })}

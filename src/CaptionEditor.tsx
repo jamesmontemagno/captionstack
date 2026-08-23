@@ -1,4 +1,4 @@
-import { isBlockingError, type CueError, type EditableCue } from './converter'
+import { isBlockingError, type CueError, type EditableCue, type QualityFinding } from './converter'
 
 /** Cues rendered per editor page; keeps the DOM small for very large files. */
 export const EDITOR_PAGE_SIZE = 50
@@ -14,6 +14,9 @@ interface CaptionEditorProps {
   onMove: (index: number, direction: -1 | 1) => void
   onSplit: (index: number) => void
   onMerge: (index: number) => void
+  /** Quality-report findings grouped by cue id, shown inline so warnings are visible while editing. */
+  findings?: Map<string, QualityFinding[]>
+  onFix?: (finding: QualityFinding) => void
   /** Present while a media preview is loaded; enables seek / set-from-playhead actions. */
   media?: {
     seek: (index: number) => void
@@ -53,7 +56,7 @@ function Pager({ page, pageCount, start, end, total, onPageChange }: { page: num
   )
 }
 
-function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge, media }: CaptionEditorProps) {
+function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge, media, findings, onFix }: CaptionEditorProps) {
   const pageCount = Math.max(1, Math.ceil(cues.length / EDITOR_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
   const start = currentPage * EDITOR_PAGE_SIZE
@@ -67,11 +70,24 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
           const index = start + offset
           const error = errors.get(cue.id)
           const errorListId = `cue-errors-${cue.id}`
-          const isWarningOnly = Boolean(error) && !isBlockingError(error)
+          // Non-blocking findings from the quality report (reading speed, long lines…). Overlap is
+          // owned by the synchronous validation so it never lags or lingers; drop the report's copy.
+          const warnings = (findings?.get(cue.id) ?? []).filter((finding) => finding.severity === 'warning' && finding.check !== 'overlap')
+          const overlapFinding = error?.overlap ? findings?.get(cue.id)?.find((finding) => finding.check === 'overlap') : undefined
+          const hasBlocking = isBlockingError(error)
+          const warningCount = warnings.length + (error?.overlap ? 1 : 0)
+          const tone = hasBlocking ? 'has-error' : warningCount > 0 ? 'has-warning' : ''
+          const timeDescribedBy = [error?.start && `${errorListId}-start`, error?.end && `${errorListId}-end`, error?.overlap && `${errorListId}-overlap`].filter(Boolean).join(' ') || undefined
+          const textDescribedBy = warnings.map((finding) => `${errorListId}-${finding.check}`).join(' ') || undefined
           return (
-            <div id={`editor-cue-${cue.id}`} className={`editor-cue${error ? (isWarningOnly ? ' has-warning' : ' has-error') : ''}`} key={cue.id}>
+            <div id={`editor-cue-${cue.id}`} className={`editor-cue${tone ? ` ${tone}` : ''}`} key={cue.id}>
               <div className="editor-cue-head">
                 <span className="editor-cue-number">{index + 1}</span>
+                {!hasBlocking && warningCount > 0 && (
+                  <span className="editor-warning-badge" title={[error?.overlap, ...warnings.map((finding) => finding.message)].filter(Boolean).join('\n')}>
+                    {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}
+                  </span>
+                )}
                 <div className="editor-times">
                   <label className="editor-time-field">
                     <span>Start</span>
@@ -80,7 +96,7 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                       value={cue.start}
                       spellCheck={false}
                       aria-invalid={error?.start ? true : undefined}
-                      aria-describedby={error ? errorListId : undefined}
+                      aria-describedby={timeDescribedBy}
                       onChange={(event) => onUpdate(index, { start: event.target.value })}
                     />
                   </label>
@@ -91,7 +107,7 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                       value={cue.end}
                       spellCheck={false}
                       aria-invalid={error?.end ? true : undefined}
-                      aria-describedby={error ? errorListId : undefined}
+                      aria-describedby={timeDescribedBy}
                       onChange={(event) => onUpdate(index, { end: event.target.value })}
                     />
                   </label>
@@ -133,13 +149,29 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                 value={cue.text}
                 rows={2}
                 aria-label={`Caption text for cue ${index + 1}`}
+                aria-describedby={textDescribedBy}
                 onChange={(event) => onUpdate(index, { text: event.target.value })}
               />
-              {error && (
-                <ul id={errorListId} className={`editor-errors${isWarningOnly ? ' is-warning' : ''}`} role={isWarningOnly ? 'status' : 'alert'}>
-                  {error.start && <li>{error.start}</li>}
-                  {error.end && <li>{error.end}</li>}
-                  {error.overlap && <li>{error.overlap}</li>}
+              {(hasBlocking || warningCount > 0) && (
+                <ul id={errorListId} className={`editor-errors${hasBlocking ? '' : ' is-warning'}`} role={hasBlocking ? 'alert' : 'status'}>
+                  {error?.start && <li><span id={`${errorListId}-start`}>{error.start}</span></li>}
+                  {error?.end && <li><span id={`${errorListId}-end`}>{error.end}</span></li>}
+                  {error?.overlap && (
+                    <li className="editor-warning">
+                      <span id={`${errorListId}-overlap`}>{error.overlap}</span>
+                      {overlapFinding?.fix && onFix && (
+                        <button type="button" className="editor-fix" aria-label={`Fix: ${error.overlap}`} onClick={() => onFix(overlapFinding)}>Fix</button>
+                      )}
+                    </li>
+                  )}
+                  {warnings.map((finding) => (
+                    <li key={finding.id} className="editor-warning">
+                      <span id={`${errorListId}-${finding.check}`}>{finding.message}</span>
+                      {finding.fix && onFix && (
+                        <button type="button" className="editor-fix" aria-label={`Fix: ${finding.message}`} onClick={() => onFix(finding)}>Fix</button>
+                      )}
+                    </li>
+                  ))}
                 </ul>
               )}
               <button type="button" className="editor-insert" aria-label={`Add a cue after cue ${index + 1}`} onClick={() => onAdd(index)}>
