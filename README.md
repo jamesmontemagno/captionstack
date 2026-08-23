@@ -25,6 +25,10 @@ A growing collection of private, browser-based caption tools. CaptionStack curre
 
 Plain-text imports receive three-second cue timings. Plain-text exports intentionally omit timing.
 
+## Batch conversion
+
+Drop or pick several files at once to convert them together. Each file's format is detected independently, per-file errors (unsupported type, over 10 MB, malformed content) are shown inline without affecting the others, and the successful conversions download as a single ZIP archive (`captionstack-<count>-files-<format>.zip`). The archive is built in the browser with a dependency-free ZIP writer (`src/converter/zip.ts`).
+
 ## Editing cues
 
 After importing a file, open **Edit cues** to fix timings and text before exporting:

@@ -311,6 +311,116 @@ h1 em {
   font-weight: 700;
 }
 
+.batch-panel {
+  border: 1.5px dashed transparent;
+  border-radius: 0.875rem;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.batch-panel.is-dragging {
+  border-color: var(--cp-accent);
+  background: var(--cp-accent-soft);
+}
+
+.batch-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.batch-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+  background: var(--cp-bg-elevated);
+}
+
+.batch-item.is-error {
+  border-color: var(--cp-danger);
+}
+
+.batch-status-icon {
+  flex: 0 0 18px;
+}
+
+.batch-status-icon.is-ready { color: var(--cp-success); }
+.batch-status-icon.is-error { color: var(--cp-danger); }
+.batch-status-icon.is-reading {
+  color: var(--cp-text-muted);
+  animation: cp-spin 900ms linear infinite;
+}
+
+.batch-item-primary {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.batch-item-primary strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.batch-item-primary span {
+  color: var(--cp-text-muted);
+  font-size: 12px;
+}
+
+.batch-item-primary .batch-item-error {
+  color: var(--cp-danger);
+}
+
+.batch-remove {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  color: var(--cp-text-muted);
+}
+
+.batch-remove:hover {
+  border-color: var(--cp-danger);
+  color: var(--cp-danger);
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.batch-hint {
+  color: var(--cp-text-soft);
+}
+
+.batch-clear {
+  margin-left: auto;
+  color: var(--cp-text-muted);
+}
+
+.batch-note {
+  margin: 14px 0 0;
+  color: var(--cp-text-muted);
+  font-size: 13px;
+}
+
+.filename-input.is-readonly input {
+  color: var(--cp-text-muted);
+}
+
 .error-message {
   margin-top: 14px;
   padding: 12px 14px;
