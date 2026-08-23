@@ -37,7 +37,7 @@ function CaptionEditor({ cues, errors, onUpdate, onAdd, onRemove, onMove, onSpli
           const errorListId = `cue-errors-${cue.id}`
           const isWarningOnly = Boolean(error) && !isBlockingError(error)
           return (
-            <div className={`editor-cue${error ? (isWarningOnly ? ' has-warning' : ' has-error') : ''}`} key={cue.id}>
+            <div id={`editor-cue-${cue.id}`} className={`editor-cue${error ? (isWarningOnly ? ' has-warning' : ' has-error') : ''}`} key={cue.id}>
               <div className="editor-cue-head">
                 <span className="editor-cue-number">{index + 1}</span>
                 <div className="editor-times">

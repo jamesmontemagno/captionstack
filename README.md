@@ -34,6 +34,23 @@ After importing a file, open **Edit cues** to fix timings and text before export
 - Invalid time ranges block export until fixed; overlapping cues are flagged as warnings but can still be exported.
 - The preview and downloaded file always reflect your edits, and everything stays in your browser.
 
+## Quality checks
+
+Every imported or edited cue list is analyzed before export. The report above the editor summarizes errors, warnings, and passed checks, and each finding links to its cue:
+
+| Check | Severity | One-click fix |
+| --- | --- | --- |
+| Valid time ranges | Error (blocks export) | — |
+| No overlapping cues | Warning | Trim the previous cue's end to this cue's start |
+| No empty cues | Warning | Remove the cue |
+| Clean whitespace | Warning | Trim edges, collapse spaces, drop blank lines |
+| Minimum duration (≥ 700 ms) | Warning | Extend to 1 s when the next cue leaves room |
+| Line length (≤ 42 chars) | Warning | — |
+| Line count (≤ 2 lines) | Warning | — |
+| Reading speed (≤ 20 chars/s) | Warning | Extend the end when the next cue leaves room |
+
+Fixes are only offered when the result is unambiguous, and **Undo** reverts any fix or structural edit.
+
 ## Local development
 
 ```bash

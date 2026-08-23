@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addCue,
+  analyzeCues,
+  applyAllFixes,
+  applyFix,
   formats,
   getFormat,
   hasBlockingErrors,
-  hasErrors,
   mergeCue,
   moveCue,
   parseCaptions,
@@ -18,11 +20,14 @@ import {
   type CueError,
   type EditableCue,
   type FormatId,
+  type QualityFinding,
 } from './converter'
 import CaptionEditor from './CaptionEditor'
+import QualityReport from './QualityReport'
 import './App.css'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_HISTORY = 50
 const ACCEPTED_EXTENSIONS = formats.map((format) => format.extension).concat('.xml').join(',')
 const DEMO_CAPTIONS = `WEBVTT
 
@@ -87,6 +92,8 @@ interface LoadedFile {
   size: number
   sourceFormat: FormatId
   cues: EditableCue[]
+  /** Previous cue lists, oldest first, so automatic fixes and structural edits can be undone. */
+  history: EditableCue[][]
 }
 
 function App() {
@@ -110,7 +117,7 @@ function App() {
     try {
       const parsed = parseCaptions(content, name)
       const nextFormat = formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
-      setLoaded({ name, size, sourceFormat: parsed.format, cues: toEditableCues(parsed.cues) })
+      setLoaded({ name, size, sourceFormat: parsed.format, cues: toEditableCues(parsed.cues), history: [] })
       setOutputFormat(nextFormat)
       setOutputName(cleanBaseName(name))
       setIsEditing(false)
@@ -139,7 +146,6 @@ function App() {
     [loaded],
   )
   const hasCueErrors = hasBlockingErrors(cueErrors)
-  const hasCueWarnings = !hasCueErrors && hasErrors(cueErrors)
 
   // Cues that have been edited into an unparseable state can't be converted yet; if the
   // user gets there, open the editor so the highlighted fields are actually visible.
@@ -157,12 +163,49 @@ function App() {
     [numericCues, outputFormat],
   )
 
+  const report = useMemo(() => (loaded ? analyzeCues(loaded.cues) : null), [loaded])
+
   const mutateCues = useCallback(
-    (transform: (cues: EditableCue[]) => EditableCue[]) => {
-      setLoaded((current) => (current ? { ...current, cues: transform(current.cues) } : current))
+    (transform: (cues: EditableCue[]) => EditableCue[], options: { record?: boolean } = {}) => {
+      setLoaded((current) => {
+        if (!current) return current
+        const cues = transform(current.cues)
+        if (cues === current.cues) return current
+        // Keystroke-level text edits aren't recorded: the textarea already has native undo,
+        // and they would otherwise flood the history meant for fixes and structural changes.
+        const history = options.record === false
+          ? current.history
+          : [...current.history, current.cues].slice(-MAX_HISTORY)
+        return { ...current, cues, history }
+      })
     },
     [],
   )
+
+  const undo = useCallback(() => {
+    setLoaded((current) => {
+      if (!current || current.history.length === 0) return current
+      const history = current.history.slice(0, -1)
+      return { ...current, cues: current.history[current.history.length - 1], history }
+    })
+  }, [])
+
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null)
+
+  const jumpToCue = useCallback((finding: QualityFinding) => {
+    setIsEditing(true)
+    setPendingFocus(finding.cueId)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingFocus) return
+    const element = document.getElementById(`editor-cue-${pendingFocus}`)
+    if (!element) return
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const target = element.querySelector<HTMLElement>('[aria-invalid="true"], .is-warning, textarea')
+    target?.focus({ preventScroll: true })
+    setPendingFocus(null)
+  }, [pendingFocus, isEditing])
 
   const handleDownload = () => {
     if (!loaded || !output) return
@@ -283,21 +326,26 @@ function App() {
                   {isEditing ? 'Hide editor' : 'Edit cues'}
                 </button>
               </div>
+              {report && (
+                <QualityReport
+                  report={report}
+                  canUndo={loaded.history.length > 0}
+                  onFix={(finding) => finding.fix && mutateCues((cues) => applyFix(cues, finding.fix!))}
+                  onFixAll={() => mutateCues((cues) => applyAllFixes(cues).cues)}
+                  onUndo={undo}
+                  onJump={jumpToCue}
+                />
+              )}
               {hasCueErrors && (
                 <div className="error-message" role="alert">
                   Fix the highlighted cues before exporting. Cues with invalid times can’t be downloaded.
-                </div>
-              )}
-              {hasCueWarnings && (
-                <div className="warning-message" role="status">
-                  Some cues overlap the cue before them. You can still download, or open the editor to adjust the timings.
                 </div>
               )}
               {isEditing && (
                 <CaptionEditor
                   cues={loaded.cues}
                   errors={cueErrors}
-                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes))}
+                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { record: false })}
                   onAdd={(index) => mutateCues((cues) => addCue(cues, index))}
                   onRemove={(index) => mutateCues((cues) => removeCue(cues, index))}
                   onMove={(index, direction) => mutateCues((cues) => moveCue(cues, index, direction))}
