@@ -70,17 +70,22 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
           const index = start + offset
           const error = errors.get(cue.id)
           const errorListId = `cue-errors-${cue.id}`
-          // Non-blocking findings from the quality report (overlap, reading speed, long lines…).
-          const warnings = (findings?.get(cue.id) ?? []).filter((finding) => finding.severity === 'warning')
+          // Non-blocking findings from the quality report (reading speed, long lines…). Overlap is
+          // owned by the synchronous validation so it never lags or lingers; drop the report's copy.
+          const warnings = (findings?.get(cue.id) ?? []).filter((finding) => finding.severity === 'warning' && finding.check !== 'overlap')
+          const overlapFinding = error?.overlap ? findings?.get(cue.id)?.find((finding) => finding.check === 'overlap') : undefined
           const hasBlocking = isBlockingError(error)
-          const tone = hasBlocking ? 'has-error' : error?.overlap || warnings.length > 0 ? 'has-warning' : ''
+          const warningCount = warnings.length + (error?.overlap ? 1 : 0)
+          const tone = hasBlocking ? 'has-error' : warningCount > 0 ? 'has-warning' : ''
+          const timeDescribedBy = [error?.start && `${errorListId}-start`, error?.end && `${errorListId}-end`, error?.overlap && `${errorListId}-overlap`].filter(Boolean).join(' ') || undefined
+          const textDescribedBy = warnings.map((finding) => `${errorListId}-${finding.check}`).join(' ') || undefined
           return (
             <div id={`editor-cue-${cue.id}`} className={`editor-cue${tone ? ` ${tone}` : ''}`} key={cue.id}>
               <div className="editor-cue-head">
                 <span className="editor-cue-number">{index + 1}</span>
-                {!hasBlocking && warnings.length > 0 && (
-                  <span className="editor-warning-badge" title={warnings.map((finding) => finding.message).join('\n')}>
-                    {warnings.length} {warnings.length === 1 ? 'warning' : 'warnings'}
+                {!hasBlocking && warningCount > 0 && (
+                  <span className="editor-warning-badge" title={[error?.overlap, ...warnings.map((finding) => finding.message)].filter(Boolean).join('\n')}>
+                    {warningCount} {warningCount === 1 ? 'warning' : 'warnings'}
                   </span>
                 )}
                 <div className="editor-times">
@@ -91,7 +96,7 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                       value={cue.start}
                       spellCheck={false}
                       aria-invalid={error?.start ? true : undefined}
-                      aria-describedby={error || warnings.length > 0 ? errorListId : undefined}
+                      aria-describedby={timeDescribedBy}
                       onChange={(event) => onUpdate(index, { start: event.target.value })}
                     />
                   </label>
@@ -102,7 +107,7 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                       value={cue.end}
                       spellCheck={false}
                       aria-invalid={error?.end ? true : undefined}
-                      aria-describedby={error || warnings.length > 0 ? errorListId : undefined}
+                      aria-describedby={timeDescribedBy}
                       onChange={(event) => onUpdate(index, { end: event.target.value })}
                     />
                   </label>
@@ -144,16 +149,24 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
                 value={cue.text}
                 rows={2}
                 aria-label={`Caption text for cue ${index + 1}`}
+                aria-describedby={textDescribedBy}
                 onChange={(event) => onUpdate(index, { text: event.target.value })}
               />
-              {(hasBlocking || error?.overlap || warnings.length > 0) && (
+              {(hasBlocking || warningCount > 0) && (
                 <ul id={errorListId} className={`editor-errors${hasBlocking ? '' : ' is-warning'}`} role={hasBlocking ? 'alert' : 'status'}>
-                  {error?.start && <li>{error.start}</li>}
-                  {error?.end && <li>{error.end}</li>}
-                  {warnings.length === 0 && error?.overlap && <li>{error.overlap}</li>}
+                  {error?.start && <li><span id={`${errorListId}-start`}>{error.start}</span></li>}
+                  {error?.end && <li><span id={`${errorListId}-end`}>{error.end}</span></li>}
+                  {error?.overlap && (
+                    <li className="editor-warning">
+                      <span id={`${errorListId}-overlap`}>{error.overlap}</span>
+                      {overlapFinding?.fix && onFix && (
+                        <button type="button" className="editor-fix" aria-label={`Fix: ${error.overlap}`} onClick={() => onFix(overlapFinding)}>Fix</button>
+                      )}
+                    </li>
+                  )}
                   {warnings.map((finding) => (
                     <li key={finding.id} className="editor-warning">
-                      <span>{finding.message}</span>
+                      <span id={`${errorListId}-${finding.check}`}>{finding.message}</span>
                       {finding.fix && onFix && (
                         <button type="button" className="editor-fix" aria-label={`Fix: ${finding.message}`} onClick={() => onFix(finding)}>Fix</button>
                       )}
