@@ -34,6 +34,7 @@ import { matchRoute, routePath, type Route } from './seo/routes'
 import './App.css'
 
 const MAX_HISTORY = 50
+const PASTED_NAME = 'pasted-captions'
 const ACCEPTED_EXTENSIONS = formats.map((format) => format.extension).concat('.xml').join(',')
 const DEMO_CAPTIONS = `WEBVTT
 
@@ -237,6 +238,39 @@ function App({ pathname = '/' }: AppProps) {
   const loadDemo = useCallback(() => {
     void loadSource({ content: DEMO_CAPTIONS, filename: 'captionstack-demo.vtt' }, 'captionstack-demo.vtt', new Blob([DEMO_CAPTIONS]).size)
   }, [loadSource])
+
+  const [isPasting, setIsPasting] = useState(false)
+  const [pastedText, setPastedText] = useState('')
+
+  // No extension on the pseudo-filename so the format is detected from the content itself.
+  const loadPastedText = useCallback((text: string) => {
+    if (!text.trim()) return
+    setIsPasting(false)
+    setPastedText('')
+    void loadSource({ content: text, filename: PASTED_NAME }, PASTED_NAME, new Blob([text]).size)
+  }, [loadSource])
+
+  // Ctrl/Cmd+V anywhere on an empty converter pastes text or clipboard files straight in.
+  useEffect(() => {
+    if (loaded || isBatch) return
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.closest('input, textarea, [contenteditable]'))) return
+      const files = event.clipboardData?.files
+      if (files && files.length > 0) {
+        event.preventDefault()
+        handleFiles(files)
+        return
+      }
+      const text = event.clipboardData?.getData('text/plain') ?? ''
+      if (text.trim()) {
+        event.preventDefault()
+        loadPastedText(text)
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [loaded, isBatch, handleFiles, loadPastedText])
 
   // Inline validation stays on the main thread: it is cheap and the editor needs it synchronously
   // to highlight fields as the user types.
@@ -474,12 +508,37 @@ function App({ pathname = '/' }: AppProps) {
               <div className="demo-row">
                 <span>Don’t have a file handy?</span>
                 <button type="button" disabled={Boolean(loadingName)} onClick={loadDemo}>Try a sample file</button>
+                <span aria-hidden="true">·</span>
+                <button type="button" disabled={Boolean(loadingName)} aria-expanded={isPasting} onClick={() => setIsPasting((open) => !open)}>
+                  {isPasting ? 'Cancel paste' : 'Paste caption text'}
+                </button>
               </div>
+              {isPasting && (
+                <form
+                  className="paste-panel"
+                  onSubmit={(event) => { event.preventDefault(); loadPastedText(pastedText) }}
+                >
+                  <label htmlFor="paste-input">Paste SRT, VTT, SBV, LRC, TTML, JSON, CSV, or plain text</label>
+                  <textarea
+                    id="paste-input"
+                    value={pastedText}
+                    rows={8}
+                    spellCheck={false}
+                    autoFocus
+                    placeholder={'1\n00:00:01,000 --> 00:00:04,000\nYour first caption…'}
+                    onChange={(event) => setPastedText(event.target.value)}
+                  />
+                  <div className="paste-actions">
+                    <button className="primary-button" type="submit" disabled={!pastedText.trim()}>Convert pasted text</button>
+                    <span>The format is detected from the text. You can also press Ctrl/⌘+V anywhere on this page.</span>
+                  </div>
+                </form>
+              )}
             </>
           ) : (
             <div className="loaded-file">
               <span className="file-icon"><Icon name="file" size={23} /></span>
-              <div className="file-primary"><strong>{loaded.name}</strong><span>{readableBytes(loaded.size)} · {cueCount} cues</span></div>
+              <div className="file-primary"><strong>{loaded.name === PASTED_NAME ? 'Pasted captions' : loaded.name}</strong><span>{readableBytes(loaded.size)} · {cueCount} cues</span></div>
               <span className="detected-format">{loaded.sourceFormat.toUpperCase()}</span>
               <button className="text-button" type="button" onClick={reset}><Icon name="reset" size={16} />Replace</button>
             </div>

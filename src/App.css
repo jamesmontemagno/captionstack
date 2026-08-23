@@ -251,10 +251,59 @@ h1 em {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 16px;
   color: var(--cp-text-muted);
   font-size: 13px;
+}
+
+.paste-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.75rem;
+  background: var(--cp-bg-elevated);
+}
+
+.paste-panel label {
+  color: var(--cp-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.paste-panel textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.5rem;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.paste-panel textarea:focus {
+  outline: none;
+  border-color: var(--cp-accent);
+}
+
+.paste-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+}
+
+.paste-actions .primary-button {
+  height: 38px;
 }
 
 .demo-row button,
