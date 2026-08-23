@@ -245,9 +245,14 @@ function App({ pathname = '/' }: AppProps) {
   // No extension on the pseudo-filename so the format is detected from the content itself.
   const loadPastedText = useCallback((text: string) => {
     if (!text.trim()) return
+    const size = new Blob([text]).size
+    if (size > MAX_FILE_SIZE) {
+      setError('Please paste caption text smaller than 10 MB.')
+      return
+    }
     setIsPasting(false)
     setPastedText('')
-    void loadSource({ content: text, filename: PASTED_NAME }, PASTED_NAME, new Blob([text]).size)
+    void loadSource({ content: text, filename: PASTED_NAME }, PASTED_NAME, size)
   }, [loadSource])
 
   // Ctrl/Cmd+V anywhere on an empty converter pastes text or clipboard files straight in.
