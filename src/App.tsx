@@ -156,6 +156,10 @@ function App() {
     const files = list ? Array.from(list) : []
     if (files.length === 0) return
     if (isBatch || files.length > 1) {
+      // Entering batch mode supersedes any single-file load still in flight.
+      loadRequest.current += 1
+      setLoadingName(null)
+      setLoaded(null)
       setError('')
       addFiles(files)
       return

@@ -39,7 +39,7 @@ function dosDateTime(date: Date): { time: number; date: number } {
   }
 }
 
-/** Appends " (2)", " (3)", … before the extension when a name repeats. */
+/** Appends " (1)", " (2)", … before the extension when a name repeats. */
 export function uniqueZipNames(names: string[]): string[] {
   const seen = new Map<string, number>()
   const used = new Set<string>()
@@ -86,6 +86,9 @@ class ByteWriter {
 }
 
 export function createZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
+  if (entries.length > 0xffff) {
+    throw new Error('ZIP archives are limited to 65,535 files.')
+  }
   const encoder = new TextEncoder()
   const names = uniqueZipNames(entries.map((entry) => entry.name))
   const writer = new ByteWriter()
@@ -137,6 +140,9 @@ export function createZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
   const centralOffset = writer.length
   const centralBytes = central.toUint8Array()
   writer.push(centralBytes)
+  if (writer.length > 0xffffffff) {
+    throw new Error('ZIP archives are limited to 4 GB.')
+  }
 
   // End of central directory
   writer.u32(0x06054b50)
