@@ -55,6 +55,16 @@ Every imported or edited cue list is analyzed before export. The report above th
 
 Fixes are only offered when the result is unambiguous, and **Undo** reverts any fix or structural edit.
 
+## Timing tools
+
+The **Timing** panel in the edit step retimes the whole cue list in one reversible step:
+
+- **Shift** every cue by a signed offset (`1.5`, `-250ms`, `00:00:02.000`); times are clamped at zero.
+- **Frame rate** retiming for captions authored against one frame rate and played at another (23.976 → 25 fps and friends), or any custom pair.
+- **Two-point sync** — pick the cue that should start at time A and the cue that should start at time B; every other cue is moved and stretched to match, fixing offset and drift together.
+
+A preview shows the first and last cue before and after; **Apply** records the change in the Undo history.
+
 ## Performance
 
 Parsing, quality analysis, and serialization run in a Web Worker (`src/converter/worker.ts`), so dropping a 10 MB file or editing a long cue list never freezes the page. The editor renders 50 cues per page, and the quality report lists findings in batches of 100. Browsers without module-worker support (and the test/prerender environments) fall back to the same code on the main thread.

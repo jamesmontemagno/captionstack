@@ -17,6 +17,7 @@ export { analyzeCuesAsync, isWorkerAvailable, loadCaptionsAsync, serializeCaptio
 export type { CaptionSource } from './client'
 export type { LoadedCaptions, SerializedCaptions } from './pipeline'
 export { formats, getFormat } from './formats'
+export { FRAME_RATES, convertFrameRate, parseOffset, scaleCues, shiftCues, syncToAnchors } from './timing'
 export { detectFormat, isFormatId, parseCaptions, parseTimestamp } from './parse'
 export { QUALITY_CHECK_IDS, QUALITY_THRESHOLDS, analyzeCues, applyAllFixes, applyFix, cleanCueText } from './quality'
 export type { QualityCheckId, QualityCheckSummary, QualityFinding, QualityFix, QualityReport, QualitySeverity } from './quality'
