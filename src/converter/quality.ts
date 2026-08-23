@@ -260,14 +260,15 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
           })
         }
         if (tooMany) {
+          // One layout fix per cue: when both checks fire, the long-line finding carries it.
+          const fix = tooLong ? undefined : layoutFix
           push({
             check: 'too-many-lines',
             severity: 'warning',
             cueId: cue.id,
             cueIndex: index,
-            message: `${lines.length} lines of text; most players show ${QUALITY_THRESHOLDS.maxLines} comfortably.${layoutFix?.kind === 'split-cue' ? ` Fix splits it into ${layoutFix.parts.length} cues.` : ''}`,
-            // One layout fix per cue: when both checks fire, the long-line finding carries it.
-            fix: tooLong ? undefined : layoutFix,
+            message: `${lines.length} lines of text; most players show ${QUALITY_THRESHOLDS.maxLines} comfortably.${fix?.kind === 'split-cue' ? ` Fix splits it into ${fix.parts.length} cues.` : ''}`,
+            fix,
           })
         }
       }

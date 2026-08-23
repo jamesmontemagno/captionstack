@@ -123,7 +123,9 @@ describe('analyzeCues', () => {
     expect(finding.fix).toMatchObject({ kind: 'rewrap', text: 'one two three' })
     const both = analyzeCues(cues([{ start: 0, end: 30000, text: 'a rather long first line that goes well past the limit\nb\nc' }]))
     expect(byCheck(both.findings, 'long-line')[0].fix).toBeDefined()
-    expect(byCheck(both.findings, 'too-many-lines')[0].fix).toBeUndefined()
+    const tooMany = byCheck(both.findings, 'too-many-lines')[0]
+    expect(tooMany.fix).toBeUndefined()
+    expect(tooMany.message).not.toContain('splits it into')
   })
 
   it('offers no layout fix for an unbreakable word', () => {
