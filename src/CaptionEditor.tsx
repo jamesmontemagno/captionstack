@@ -17,6 +17,8 @@ interface CaptionEditorProps {
   /** Quality-report findings grouped by cue id, shown inline so warnings are visible while editing. */
   findings?: Map<string, QualityFinding[]>
   onFix?: (finding: QualityFinding) => void
+  /** Reports which cue card has keyboard focus so the output pane can highlight it. */
+  onFocusCue?: (cueId: string) => void
   /** Present while a media preview is loaded; enables seek / set-from-playhead actions. */
   media?: {
     seek: (index: number) => void
@@ -56,7 +58,7 @@ function Pager({ page, pageCount, start, end, total, onPageChange }: { page: num
   )
 }
 
-function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge, media, findings, onFix }: CaptionEditorProps) {
+function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge, media, findings, onFix, onFocusCue }: CaptionEditorProps) {
   const pageCount = Math.max(1, Math.ceil(cues.length / EDITOR_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount - 1)
   const start = currentPage * EDITOR_PAGE_SIZE
@@ -80,7 +82,7 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
           const timeDescribedBy = [error?.start && `${errorListId}-start`, error?.end && `${errorListId}-end`, error?.overlap && `${errorListId}-overlap`].filter(Boolean).join(' ') || undefined
           const textDescribedBy = warnings.map((finding) => `${errorListId}-${finding.check}`).join(' ') || undefined
           return (
-            <div id={`editor-cue-${cue.id}`} className={`editor-cue${tone ? ` ${tone}` : ''}`} key={cue.id}>
+            <div id={`editor-cue-${cue.id}`} className={`editor-cue${tone ? ` ${tone}` : ''}`} key={cue.id} onFocusCapture={() => onFocusCue?.(cue.id)}>
               <div className="editor-cue-head">
                 <span className="editor-cue-number">{index + 1}</span>
                 {!hasBlocking && warningCount > 0 && (

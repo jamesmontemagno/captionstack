@@ -23,5 +23,6 @@ export { QUALITY_CHECK_IDS, QUALITY_THRESHOLDS, analyzeCues, applyAllFixes, appl
 export { buildPattern, findMatches, replaceAll } from './search'
 export type { SearchMatch, SearchOptions, SearchResult } from './search'
 export type { QualityCheckId, QualityCheckSummary, QualityFinding, QualityFix, QualityReport, QualitySeverity } from './quality'
-export { formatTimestamp, serializeCaptions } from './serialize'
+export { formatTimestamp, serializeCaptions, splitOutput } from './serialize'
+export type { OutputSegments } from './serialize'
 export type { Cue, FormatDefinition, FormatId, ParsedCaptions } from './types'
