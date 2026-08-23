@@ -1,28 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addCue,
-  analyzeCues,
+  analyzeCuesAsync,
   applyAllFixes,
   applyFix,
   formats,
   getFormat,
   hasBlockingErrors,
+  loadCaptionsAsync,
   mergeCue,
   moveCue,
-  parseCaptions,
   removeCue,
-  serializeCaptions,
+  serializeCaptionsAsync,
   splitCue,
-  toCues,
-  toEditableCues,
   updateCue,
   validateCues,
+  type CaptionSource,
   type CueError,
   type EditableCue,
   type FormatId,
   type QualityFinding,
+  type QualityReport as QualityReportData,
+  type SerializedCaptions,
 } from './converter'
-import CaptionEditor from './CaptionEditor'
+import CaptionEditor, { EDITOR_PAGE_SIZE } from './CaptionEditor'
 import QualityReport from './QualityReport'
 import './App.css'
 
@@ -50,7 +51,7 @@ function BrandIcon() {
   )
 }
 
-function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset'; size?: number }) {
+function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner'; size?: number }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
     file: <><path d="M6 2.75h7l5 5V21.25H6z" /><path d="M13 2.75v5h5M9 13h6M9 17h6" /></>,
@@ -61,6 +62,7 @@ function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'downlo
     sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" /></>,
     check: <path d="M5 12.5l4 4L19 6.5" />,
     reset: <><path d="M4 8V4m0 0h4M4 4l4 4" /><path d="M5.5 16.5A8 8 0 1 0 4 8" /></>,
+    spinner: <path d="M12 3a9 9 0 1 0 9 9" />,
   }
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>
 }
@@ -106,7 +108,13 @@ function App() {
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [editorPage, setEditorPage] = useState(0)
   const [theme, setTheme] = useState('light')
+  const [loadingName, setLoadingName] = useState<string | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+  // Monotonic counters so a slow worker reply for a superseded request is ignored.
+  const loadRequest = useRef(0)
+  const serializeRequest = useRef(0)
 
   useEffect(() => {
     // Sync to the theme the inline head script picked before hydration. Both server and
@@ -115,34 +123,43 @@ function App() {
     if (activeTheme && activeTheme !== theme) setTheme(activeTheme)
   }, [theme])
 
-  const processContent = useCallback((content: string, name: string, size: number) => {
+  const loadSource = useCallback(async (source: CaptionSource, name: string, size: number) => {
+    const requestId = (loadRequest.current += 1)
+    setLoadingName(name)
+    setError('')
     try {
-      const parsed = parseCaptions(content, name)
+      const parsed = await loadCaptionsAsync(source)
+      if (requestId !== loadRequest.current) return
       const nextFormat = formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
-      setLoaded({ name, size, sourceFormat: parsed.format, cues: toEditableCues(parsed.cues), history: [], coalescing: false })
+      setLoaded({ name, size, sourceFormat: parsed.format, cues: parsed.cues, history: [], coalescing: false })
       setOutputFormat(nextFormat)
       setOutputName(cleanBaseName(name))
       setIsEditing(false)
-      setError('')
+      setEditorPage(0)
     } catch (caught) {
+      if (requestId !== loadRequest.current) return
       setLoaded(null)
       setError(caught instanceof Error ? caught.message : 'This file could not be read.')
+    } finally {
+      if (requestId === loadRequest.current) setLoadingName(null)
     }
   }, [])
 
-  const processFile = useCallback(async (file?: File) => {
+  const processFile = useCallback((file?: File) => {
     if (!file) return
     if (file.size > MAX_FILE_SIZE) {
       setError('Please choose a caption file smaller than 10 MB.')
       return
     }
-    try {
-      processContent(await file.text(), file.name, file.size)
-    } catch {
-      setError('The selected file could not be opened.')
-    }
-  }, [processContent])
+    void loadSource(file, file.name, file.size)
+  }, [loadSource])
 
+  const loadDemo = useCallback(() => {
+    void loadSource({ content: DEMO_CAPTIONS, filename: 'captionstack-demo.vtt' }, 'captionstack-demo.vtt', new Blob([DEMO_CAPTIONS]).size)
+  }, [loadSource])
+
+  // Inline validation stays on the main thread: it is cheap and the editor needs it synchronously
+  // to highlight fields as the user types.
   const cueErrors = useMemo<Map<string, CueError>>(
     () => (loaded ? validateCues(loaded.cues) : new Map()),
     [loaded],
@@ -155,17 +172,33 @@ function App() {
     if (hasCueErrors) setIsEditing(true)
   }, [hasCueErrors])
 
-  const numericCues = useMemo(
-    () => (loaded && !hasCueErrors ? toCues(loaded.cues) : null),
-    [loaded, hasCueErrors],
-  )
+  // Serialization and quality analysis run in the worker. A short delay batches rapid edits
+  // (keystrokes, quick format clicks) into one trip, and a request counter discards stale replies.
+  const [serialized, setSerialized] = useState<SerializedCaptions | null>(null)
+  const [report, setReport] = useState<QualityReportData | null>(null)
+  const cues = loaded?.cues ?? null
 
-  const output = useMemo(
-    () => (numericCues ? serializeCaptions(numericCues, outputFormat) : ''),
-    [numericCues, outputFormat],
-  )
-
-  const report = useMemo(() => (loaded ? analyzeCues(loaded.cues) : null), [loaded])
+  useEffect(() => {
+    const requestId = (serializeRequest.current += 1)
+    if (!cues) {
+      setSerialized(null)
+      setReport(null)
+      return
+    }
+    const timer = window.setTimeout(() => {
+      analyzeCuesAsync(cues)
+        .then((result) => { if (requestId === serializeRequest.current) setReport(result) })
+        .catch(() => { if (requestId === serializeRequest.current) setReport(null) })
+      if (hasCueErrors) {
+        setSerialized(null)
+        return
+      }
+      serializeCaptionsAsync(cues, outputFormat)
+        .then((result) => { if (requestId === serializeRequest.current) setSerialized(result) })
+        .catch(() => { if (requestId === serializeRequest.current) setSerialized(null) })
+    }, 60)
+    return () => window.clearTimeout(timer)
+  }, [cues, hasCueErrors, outputFormat])
 
   const mutateCues = useCallback(
     (transform: (cues: EditableCue[]) => EditableCue[], options: { coalesce?: boolean } = {}) => {
@@ -196,6 +229,7 @@ function App() {
 
   const jumpToCue = useCallback((finding: QualityFinding) => {
     setIsEditing(true)
+    setEditorPage(Math.floor(finding.cueIndex / EDITOR_PAGE_SIZE))
     setPendingFocus(finding.cueId)
   }, [])
 
@@ -207,24 +241,35 @@ function App() {
     const target = element.querySelector<HTMLElement>('[aria-invalid="true"], .is-warning, textarea')
     target?.focus({ preventScroll: true })
     setPendingFocus(null)
-  }, [pendingFocus, isEditing])
+  }, [pendingFocus, isEditing, editorPage])
 
-  const handleDownload = () => {
-    if (!loaded || !output) return
+  const handleDownload = async () => {
+    if (!cues || hasCueErrors || isDownloading) return
     const format = getFormat(outputFormat)
-    const blob = new Blob([output], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${cleanBaseName(outputName.trim()) || 'captions'}${format.extension}`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    setIsDownloading(true)
+    try {
+      // Serialize fresh so the download always reflects the latest edits, even mid-debounce.
+      const { output } = await serializeCaptionsAsync(cues, outputFormat)
+      const blob = new Blob([output], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${cleanBaseName(outputName.trim()) || 'captions'}${format.extension}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The converted file could not be prepared.')
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const reset = () => {
+    loadRequest.current += 1
     setLoaded(null)
+    setLoadingName(null)
     setError('')
     setOutputName('')
     setIsEditing(false)
@@ -237,7 +282,7 @@ function App() {
     setTheme(nextTheme)
   }
 
-  const duration = numericCues && numericCues.length ? Math.max(...numericCues.map((cue) => cue.end)) : 0
+  const duration = serialized?.duration ?? 0
   const cueCount = loaded ? loaded.cues.length : 0
 
   return (
@@ -274,8 +319,10 @@ function App() {
           {!loaded ? (
             <>
               <button
-                className={`drop-zone${isDragging ? ' is-dragging' : ''}`}
+                className={`drop-zone${isDragging ? ' is-dragging' : ''}${loadingName ? ' is-loading' : ''}`}
                 type="button"
+                disabled={Boolean(loadingName)}
+                aria-busy={Boolean(loadingName)}
                 onClick={() => inputRef.current?.click()}
                 onDragEnter={(event) => { event.preventDefault(); setIsDragging(true) }}
                 onDragOver={(event) => event.preventDefault()}
@@ -283,24 +330,34 @@ function App() {
                 onDrop={(event) => {
                   event.preventDefault()
                   setIsDragging(false)
-                  void processFile(event.dataTransfer.files[0])
+                  processFile(event.dataTransfer.files[0])
                 }}
               >
-                <span className="upload-icon"><Icon name="upload" size={28} /></span>
-                <strong>Drop your file here</strong>
-                <span>or click to browse from your device</span>
-                <small>Up to 10 MB · SRT, VTT, SBV, LRC, TTML, JSON, CSV, TXT</small>
+                {loadingName ? (
+                  <>
+                    <span className="upload-icon is-spinning" aria-hidden="true"><Icon name="spinner" size={28} /></span>
+                    <strong>Reading {loadingName}…</strong>
+                    <span role="status">Detecting the format and parsing cues in the background.</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="upload-icon"><Icon name="upload" size={28} /></span>
+                    <strong>Drop your file here</strong>
+                    <span>or click to browse from your device</span>
+                    <small>Up to 10 MB · SRT, VTT, SBV, LRC, TTML, JSON, CSV, TXT</small>
+                  </>
+                )}
               </button>
               <input
                 ref={inputRef}
                 className="visually-hidden"
                 type="file"
                 accept={ACCEPTED_EXTENSIONS}
-                onChange={(event) => void processFile(event.target.files?.[0])}
+                onChange={(event) => processFile(event.target.files?.[0])}
               />
               <div className="demo-row">
                 <span>Don’t have a file handy?</span>
-                <button type="button" onClick={() => processContent(DEMO_CAPTIONS, 'captionstack-demo.vtt', new Blob([DEMO_CAPTIONS]).size)}>Try a sample file</button>
+                <button type="button" disabled={Boolean(loadingName)} onClick={loadDemo}>Try a sample file</button>
               </div>
             </>
           ) : (
@@ -328,7 +385,7 @@ function App() {
                   {isEditing ? 'Hide editor' : 'Edit cues'}
                 </button>
               </div>
-              {report && (
+              {report ? (
                 <QualityReport
                   report={report}
                   canUndo={loaded.history.length > 0}
@@ -337,6 +394,13 @@ function App() {
                   onUndo={undo}
                   onJump={jumpToCue}
                 />
+              ) : (
+                <div className="quality-report is-pending" role="status" aria-live="polite">
+                  <div className="quality-summary">
+                    <span className="upload-icon is-spinning quality-pending-icon" aria-hidden="true"><Icon name="spinner" size={16} /></span>
+                    <div className="quality-summary-text"><strong>Checking caption quality…</strong><span>Running checks in the background.</span></div>
+                  </div>
+                </div>
               )}
               {hasCueErrors && (
                 <div className="error-message" role="alert">
@@ -347,6 +411,8 @@ function App() {
                 <CaptionEditor
                   cues={loaded.cues}
                   errors={cueErrors}
+                  page={editorPage}
+                  onPageChange={setEditorPage}
                   onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { coalesce: true })}
                   onAdd={(index) => mutateCues((cues) => addCue(cues, index))}
                   onRemove={(index) => mutateCues((cues) => removeCue(cues, index))}
@@ -389,8 +455,8 @@ function App() {
                 <div><span>TO</span><strong>{outputFormat.toUpperCase()}</strong></div>
                 <div className="stats">
                   <span><strong>{cueCount}</strong> cues</span>
-                  <span><strong>{durationLabel(duration)}</strong> runtime</span>
-                  <span><strong>{readableBytes(new Blob([output]).size)}</strong> output</span>
+                  <span><strong>{serialized ? durationLabel(duration) : '…'}</strong> runtime</span>
+                  <span><strong>{serialized ? readableBytes(new Blob([serialized.output]).size) : '…'}</strong> output</span>
                 </div>
               </div>
 
@@ -411,8 +477,8 @@ function App() {
                   <input id="output-name" value={outputName} onChange={(event) => setOutputName(event.target.value)} />
                   <span>{getFormat(outputFormat).extension}</span>
                 </div>
-                <button className="primary-button" type="button" onClick={handleDownload} disabled={hasCueErrors}>
-                  <Icon name="download" size={20} />Download converted file
+                <button className="primary-button" type="button" onClick={() => void handleDownload()} disabled={hasCueErrors || isDownloading} aria-busy={isDownloading}>
+                  <Icon name="download" size={20} />{isDownloading ? 'Preparing file…' : 'Download converted file'}
                 </button>
               </div>
             </div>

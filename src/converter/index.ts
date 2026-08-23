@@ -13,6 +13,9 @@ export {
   validateCues,
 } from './edit'
 export type { CueError, EditableCue } from './edit'
+export { analyzeCuesAsync, isWorkerAvailable, loadCaptionsAsync, serializeCaptionsAsync } from './client'
+export type { CaptionSource } from './client'
+export type { LoadedCaptions, SerializedCaptions } from './pipeline'
 export { formats, getFormat } from './formats'
 export { detectFormat, isFormatId, parseCaptions, parseTimestamp } from './parse'
 export { QUALITY_CHECK_IDS, QUALITY_THRESHOLDS, analyzeCues, applyAllFixes, applyFix, cleanCueText } from './quality'

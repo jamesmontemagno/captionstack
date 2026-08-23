@@ -1,8 +1,13 @@
 import { isBlockingError, type CueError, type EditableCue } from './converter'
 
+/** Cues rendered per editor page; keeps the DOM small for very large files. */
+export const EDITOR_PAGE_SIZE = 50
+
 interface CaptionEditorProps {
   cues: EditableCue[]
   errors: Map<string, CueError>
+  page: number
+  onPageChange: (page: number) => void
   onUpdate: (index: number, changes: Partial<Pick<EditableCue, 'start' | 'end' | 'text'>>) => void
   onAdd: (index: number) => void
   onRemove: (index: number) => void
@@ -28,11 +33,29 @@ function EditorIcon({ name, size = 17 }: { name: keyof typeof editorIcons; size?
   )
 }
 
-function CaptionEditor({ cues, errors, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge }: CaptionEditorProps) {
+function Pager({ page, pageCount, start, end, total, onPageChange }: { page: number; pageCount: number; start: number; end: number; total: number; onPageChange: (page: number) => void }) {
+  if (pageCount <= 1) return null
+  return (
+    <nav className="editor-pager" aria-label="Editor pages">
+      <button type="button" className="text-button" disabled={page === 0} onClick={() => onPageChange(page - 1)}>‹ Previous</button>
+      <span>Cues {start + 1}–{end} of {total.toLocaleString()} · Page {page + 1} of {pageCount.toLocaleString()}</span>
+      <button type="button" className="text-button" disabled={page >= pageCount - 1} onClick={() => onPageChange(page + 1)}>Next ›</button>
+    </nav>
+  )
+}
+
+function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRemove, onMove, onSplit, onMerge }: CaptionEditorProps) {
+  const pageCount = Math.max(1, Math.ceil(cues.length / EDITOR_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount - 1)
+  const start = currentPage * EDITOR_PAGE_SIZE
+  const end = Math.min(cues.length, start + EDITOR_PAGE_SIZE)
+  const pager = <Pager page={currentPage} pageCount={pageCount} start={start} end={end} total={cues.length} onPageChange={onPageChange} />
   return (
     <div className="caption-editor">
+      {pager}
       <div className="editor-list">
-        {cues.map((cue, index) => {
+        {cues.slice(start, end).map((cue, offset) => {
+          const index = start + offset
           const error = errors.get(cue.id)
           const errorListId = `cue-errors-${cue.id}`
           const isWarningOnly = Boolean(error) && !isBlockingError(error)
@@ -103,6 +126,7 @@ function CaptionEditor({ cues, errors, onUpdate, onAdd, onRemove, onMove, onSpli
           )
         })}
       </div>
+      {pager}
       {cues.length === 0 && (
         <button type="button" className="editor-insert editor-insert-empty" onClick={() => onAdd(-1)}>
           <EditorIcon name="add" size={15} />Add the first cue

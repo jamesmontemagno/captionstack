@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import type { QualityFinding, QualityReport as Report } from './converter'
 
+/** Findings rendered before a "show more" control; keeps the DOM small for huge files. */
+const FINDINGS_PAGE = 100
+
 interface QualityReportProps {
   report: Report
   canUndo: boolean
@@ -31,6 +34,7 @@ function summaryLabel(report: Report): string {
 function QualityReport({ report, canUndo, onFix, onFixAll, onUndo, onJump }: QualityReportProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showPassed, setShowPassed] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(FINDINGS_PAGE)
   const clean = report.findings.length === 0
   const passedChecks = report.checks.filter((check) => check.count === 0)
 
@@ -61,7 +65,7 @@ function QualityReport({ report, canUndo, onFix, onFixAll, onUndo, onJump }: Qua
         <div className="quality-details">
           {report.findings.length > 0 && (
             <ul className="quality-findings">
-              {report.findings.map((finding) => {
+              {report.findings.slice(0, visibleCount).map((finding) => {
                 const label = report.checks.find((check) => check.id === finding.check)?.label
                 return (
                   <li key={finding.id} className={`quality-finding is-${finding.severity}`}>
@@ -82,6 +86,11 @@ function QualityReport({ report, canUndo, onFix, onFixAll, onUndo, onJump }: Qua
                 )
               })}
             </ul>
+          )}
+          {report.findings.length > visibleCount && (
+            <button type="button" className="text-button quality-show-more" onClick={() => setVisibleCount((count) => count + FINDINGS_PAGE)}>
+              Show {Math.min(FINDINGS_PAGE, report.findings.length - visibleCount)} more of {(report.findings.length - visibleCount).toLocaleString()} remaining
+            </button>
           )}
 
           {passedChecks.length > 0 && (
