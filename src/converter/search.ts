@@ -56,11 +56,16 @@ export function findMatches(cues: EditableCue[], query: string, options: SearchO
   const matches: SearchMatch[] = []
   let total = 0
   cues.forEach((cue, cueIndex) => {
-    pattern.lastIndex = 0
-    const first = pattern.exec(cue.text)
-    if (!first) return
-    let count = 1
-    while (pattern.exec(cue.text)) count += 1
+    let first: RegExpMatchArray | null = null
+    let count = 0
+    // matchAll advances past zero-length matches per spec, so look-arounds like "\b" can't
+    // spin forever the way a manual exec() loop would.
+    for (const match of cue.text.matchAll(pattern)) {
+      if (match[0].length === 0) continue
+      count += 1
+      first ??= match
+    }
+    if (!first || first.index === undefined) return
     total += count
     matches.push({
       cueId: cue.id,

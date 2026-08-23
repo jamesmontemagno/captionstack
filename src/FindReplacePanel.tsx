@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { findMatches, replaceAll, type EditableCue, type SearchMatch, type SearchOptions } from './converter'
 
 /** Matches listed before a "show more" control. */
@@ -17,7 +17,10 @@ function FindReplacePanel({ cues, onReplaceAll, onJump }: FindReplacePanelProps)
   const [visible, setVisible] = useState(MATCHES_PAGE)
   const [lastReplaced, setLastReplaced] = useState<number | null>(null)
 
-  const result = useMemo(() => findMatches(cues, query, options), [cues, query, options])
+  // Deferred so typing stays responsive while a large cue list is searched.
+  const deferredQuery = useDeferredValue(query)
+  const deferredOptions = useDeferredValue(options)
+  const result = useMemo(() => findMatches(cues, deferredQuery, deferredOptions), [cues, deferredQuery, deferredOptions])
 
   const toggle = (key: keyof SearchOptions) => {
     setOptions((current) => ({ ...current, [key]: !current[key] }))
@@ -33,8 +36,9 @@ function FindReplacePanel({ cues, onReplaceAll, onJump }: FindReplacePanelProps)
         : `${result.total.toLocaleString()} ${result.total === 1 ? 'match' : 'matches'} in ${result.matches.length.toLocaleString()} ${result.matches.length === 1 ? 'cue' : 'cues'}`
 
   const handleReplaceAll = () => {
-    if (result.total === 0) return
-    const total = result.total
+    // Recount with the live query/options: the displayed result may be a deferred render behind.
+    const { total } = findMatches(cues, query, options)
+    if (total === 0) return
     onReplaceAll((list) => replaceAll(list, query, replacement, options))
     setLastReplaced(total)
   }

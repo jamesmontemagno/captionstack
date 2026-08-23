@@ -27,6 +27,12 @@ describe('buildPattern', () => {
   it('rejects patterns that match the empty string', () => {
     expect(buildPattern('a*', { useRegex: true }).error).toContain('empty')
   })
+
+  it('does not hang on context-dependent zero-width matches', () => {
+    const result = findMatches(cues(), '\\b', { useRegex: true })
+    expect(result.total).toBe(0)
+    expect(findMatches(cues(), '(?=Bob)', { useRegex: true }).total).toBe(0)
+  })
 })
 
 describe('findMatches', () => {
