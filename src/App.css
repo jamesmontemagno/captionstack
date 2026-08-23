@@ -699,7 +699,7 @@ h1 em {
 
 .download-row {
   display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) auto;
+  grid-template-columns: auto minmax(180px, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   margin-top: 18px;
@@ -770,6 +770,62 @@ h1 em {
   background: var(--cp-surface-soft);
   color: var(--cp-text-muted);
   cursor: not-allowed;
+}
+
+.secondary-button {
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 0.625rem;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.secondary-button:hover {
+  border-color: var(--cp-accent);
+  color: var(--cp-accent);
+}
+
+.secondary-button.is-success {
+  border-color: var(--cp-success);
+  color: var(--cp-success);
+}
+
+.secondary-button:disabled {
+  border-color: var(--cp-border);
+  color: var(--cp-text-muted);
+  cursor: not-allowed;
+}
+
+.preview-heading .text-button {
+  font-size: 11px;
+}
+
+.output-view {
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 14px 16px;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.output-view:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
 }
 
 .edit-area {
