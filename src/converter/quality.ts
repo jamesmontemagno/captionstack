@@ -18,10 +18,10 @@ export const QUALITY_CHECK_IDS = [
 export type QualityCheckId = (typeof QUALITY_CHECK_IDS)[number]
 
 export type QualityFix =
-  | { kind: 'trim-previous'; index: number }
-  | { kind: 'remove-cue'; index: number }
-  | { kind: 'clean-text'; index: number; text: string }
-  | { kind: 'extend-end'; index: number; end: number }
+  | { kind: 'trim-previous'; cueId: string }
+  | { kind: 'remove-cue'; cueId: string }
+  | { kind: 'clean-text'; cueId: string; text: string }
+  | { kind: 'extend-end'; cueId: string; end: number }
 
 export interface QualityFinding {
   id: string
@@ -132,7 +132,7 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
         cueId: cue.id,
         cueIndex: index,
         message: `Starts ${formatTimestamp(start)} but cue ${index} ends at ${ends[index - 1] !== null ? formatTimestamp(ends[index - 1]!) : '?'}.`,
-        fix: canTrim ? { kind: 'trim-previous', index } : undefined,
+        fix: canTrim ? { kind: 'trim-previous', cueId: cue.id } : undefined,
       })
     }
 
@@ -144,7 +144,7 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
         cueId: cue.id,
         cueIndex: index,
         message: 'This cue has no text.',
-        fix: { kind: 'remove-cue', index },
+        fix: { kind: 'remove-cue', cueId: cue.id },
       })
     } else if (cleaned !== cue.text) {
       push({
@@ -153,7 +153,7 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
         cueId: cue.id,
         cueIndex: index,
         message: 'Extra spaces or blank lines can be cleaned up.',
-        fix: { kind: 'clean-text', index, text: cleaned },
+        fix: { kind: 'clean-text', cueId: cue.id, text: cleaned },
       })
     }
 
@@ -194,7 +194,7 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
           cueId: cue.id,
           cueIndex: index,
           message: `Only on screen for ${duration} ms; aim for at least ${QUALITY_THRESHOLDS.minDurationMs} ms.`,
-          fix: roomToExtend(target) ? { kind: 'extend-end', index, end: target } : undefined,
+          fix: roomToExtend(target) ? { kind: 'extend-end', cueId: cue.id, end: target } : undefined,
         })
       } else {
         const speed = readingSpeed(cleaned, duration)
@@ -207,7 +207,7 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
             cueId: cue.id,
             cueIndex: index,
             message: `${speed.toFixed(1)} characters per second; ${QUALITY_THRESHOLDS.maxCharsPerSecond} or fewer is comfortable.`,
-            fix: roomToExtend(target) ? { kind: 'extend-end', index, end: target } : undefined,
+            fix: roomToExtend(target) ? { kind: 'extend-end', cueId: cue.id, end: target } : undefined,
           })
         }
       }
@@ -231,20 +231,26 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
   }
 }
 
+/**
+ * Fixes target cues by id rather than position, so a fix computed from a slightly stale
+ * report (analysis runs asynchronously) can never land on the wrong cue. Unknown ids no-op.
+ */
 export function applyFix(cues: EditableCue[], fix: QualityFix): EditableCue[] {
+  const index = cues.findIndex((cue) => cue.id === fix.cueId)
+  if (index === -1) return cues
   switch (fix.kind) {
     case 'trim-previous': {
-      const start = tryParse(cues[fix.index]?.start ?? '')
-      const previous = cues[fix.index - 1]
+      const start = tryParse(cues[index].start)
+      const previous = cues[index - 1]
       if (start === null || !previous) return cues
-      return cues.map((cue, position) => (position === fix.index - 1 ? { ...cue, end: formatTimestamp(start) } : cue))
+      return cues.map((cue, position) => (position === index - 1 ? { ...cue, end: formatTimestamp(start) } : cue))
     }
     case 'remove-cue':
-      return cues.filter((_, position) => position !== fix.index)
+      return cues.filter((_, position) => position !== index)
     case 'clean-text':
-      return cues.map((cue, position) => (position === fix.index ? { ...cue, text: fix.text } : cue))
+      return cues.map((cue, position) => (position === index ? { ...cue, text: fix.text } : cue))
     case 'extend-end':
-      return cues.map((cue, position) => (position === fix.index ? { ...cue, end: formatTimestamp(fix.end) } : cue))
+      return cues.map((cue, position) => (position === index ? { ...cue, end: formatTimestamp(fix.end) } : cue))
   }
 }
 

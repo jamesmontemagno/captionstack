@@ -228,10 +228,13 @@ function App() {
   const [pendingFocus, setPendingFocus] = useState<string | null>(null)
 
   const jumpToCue = useCallback((finding: QualityFinding) => {
+    // Resolve the position from the live cue list: the report may lag behind recent edits.
+    const index = loaded?.cues.findIndex((cue) => cue.id === finding.cueId) ?? -1
+    if (index === -1) return
     setIsEditing(true)
-    setEditorPage(Math.floor(finding.cueIndex / EDITOR_PAGE_SIZE))
+    setEditorPage(Math.floor(index / EDITOR_PAGE_SIZE))
     setPendingFocus(finding.cueId)
-  }, [])
+  }, [loaded])
 
   useEffect(() => {
     if (!pendingFocus) return

@@ -53,7 +53,7 @@ describe('analyzeCues', () => {
     ])
     const [finding] = byCheck(analyzeCues(editable).findings, 'overlap')
     expect(finding.severity).toBe('warning')
-    expect(finding.fix).toEqual({ kind: 'trim-previous', index: 1 })
+    expect(finding.fix).toEqual({ kind: 'trim-previous', cueId: editable[1].id })
     const fixed = applyFix(editable, finding.fix!)
     expect(fixed[0].end).toBe('00:00:03.000')
     expect(byCheck(analyzeCues(fixed).findings, 'overlap')).toHaveLength(0)
@@ -74,7 +74,7 @@ describe('analyzeCues', () => {
       { start: 3000, end: 5000, text: 'Real text.' },
     ])
     const [finding] = byCheck(analyzeCues(editable).findings, 'empty-cue')
-    expect(finding.fix).toEqual({ kind: 'remove-cue', index: 0 })
+    expect(finding.fix).toEqual({ kind: 'remove-cue', cueId: editable[0].id })
     expect(applyFix(editable, finding.fix!)).toHaveLength(1)
   })
 
@@ -107,7 +107,7 @@ describe('analyzeCues', () => {
       { start: 5000, end: 8000, text: 'Next.' },
     ])
     const [finding] = byCheck(analyzeCues(roomy).findings, 'short-duration')
-    expect(finding.fix).toEqual({ kind: 'extend-end', index: 0, end: 2000 })
+    expect(finding.fix).toEqual({ kind: 'extend-end', cueId: roomy[0].id, end: 2000 })
     expect(applyFix(roomy, finding.fix!)[0].end).toBe('00:00:02.000')
   })
 
@@ -118,13 +118,28 @@ describe('analyzeCues', () => {
     ])
     const [finding] = byCheck(analyzeCues(editable).findings, 'reading-speed')
     expect(finding.message).toContain('characters per second')
-    expect(finding.fix).toMatchObject({ kind: 'extend-end', index: 0 })
+    expect(finding.fix).toMatchObject({ kind: 'extend-end', cueId: editable[0].id })
     const fixed = applyFix(editable, finding.fix!)
     expect(byCheck(analyzeCues(fixed).findings, 'reading-speed')).toHaveLength(0)
   })
 })
 
 describe('applyAllFixes', () => {
+  it('applies a stale fix to the right cue even after the list has shifted', () => {
+    const editable = cues([
+      { start: 1000, end: 2000, text: '' },
+      { start: 2000, end: 3000, text: 'Keep me.' },
+      { start: 3000, end: 4000, text: '   ' },
+    ])
+    const [first, second] = byCheck(analyzeCues(editable).findings, 'empty-cue')
+    // Apply the first removal, then the second using the now-stale report.
+    const afterFirst = applyFix(editable, first.fix!)
+    const afterSecond = applyFix(afterFirst, second.fix!)
+    expect(afterSecond.map((cue) => cue.text)).toEqual(['Keep me.'])
+    // A fix for a cue that no longer exists is a no-op.
+    expect(applyFix(afterSecond, first.fix!)).toBe(afterSecond)
+  })
+
   it('applies every safe fix and leaves only unfixable findings', () => {
     const editable = cues([
       { start: 1000, end: 4000, text: ' Padded text ' },
