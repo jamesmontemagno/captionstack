@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   addCue,
   analyzeCuesAsync,
@@ -27,6 +27,9 @@ import CaptionEditor, { EDITOR_PAGE_SIZE } from './CaptionEditor'
 import QualityReport from './QualityReport'
 import BatchPanel from './BatchPanel'
 import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } from './batch'
+import LandingContent from './LandingContent'
+import { FORMAT_INFO } from './seo/formatInfo'
+import { matchRoute, routePath, type Route } from './seo/routes'
 import './App.css'
 
 const MAX_HISTORY = 50
@@ -92,10 +95,46 @@ interface LoadedFile {
   coalescing: boolean
 }
 
-function App() {
+function heroCopy(route: Route): { eyebrow: string; title: ReactNode; description: string } {
+  switch (route.kind) {
+    case 'home':
+      return {
+        eyebrow: 'CAPTION CONVERTER',
+        title: <>Your captions.<br /><em>Any format.</em></>,
+        description: 'Convert subtitle files in seconds. No uploads, no accounts, and nothing leaves your browser.',
+      }
+    case 'format': {
+      const info = FORMAT_INFO[route.format]
+      return {
+        eyebrow: `${route.format.toUpperCase()} CONVERTER`,
+        title: <>{info.name} files.<br /><em>Any format.</em></>,
+        description: `Convert ${info.extension} captions to SRT, VTT, TTML, and more — or convert anything to ${info.extension}. Free, private, and in your browser.`,
+      }
+    }
+    case 'convert': {
+      const from = FORMAT_INFO[route.from]
+      const to = FORMAT_INFO[route.to]
+      return {
+        eyebrow: `${route.from.toUpperCase()} TO ${route.to.toUpperCase()}`,
+        title: <>{route.from.toUpperCase()} to <em>{route.to.toUpperCase()}</em>.</>,
+        description: `Convert ${from.name} (${from.extension}) subtitles to ${to.name} (${to.extension}) in seconds. No upload, no sign-up, nothing leaves your browser.`,
+      }
+    }
+  }
+}
+
+interface AppProps {
+  /** The path being rendered. Passed explicitly so server and client agree during hydration. */
+  pathname?: string
+}
+
+function App({ pathname = '/' }: AppProps) {
+  const route = useMemo(() => matchRoute(pathname), [pathname])
+  const hero = heroCopy(route)
+  const preferredFormat: FormatId | null = route.kind === 'convert' ? route.to : null
   const inputRef = useRef<HTMLInputElement>(null)
   const [loaded, setLoaded] = useState<LoadedFile | null>(null)
-  const [outputFormat, setOutputFormat] = useState<FormatId>('srt')
+  const [outputFormat, setOutputFormat] = useState<FormatId>(preferredFormat ?? 'srt')
   const [outputName, setOutputName] = useState('')
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
@@ -122,7 +161,10 @@ function App() {
     try {
       const parsed = await loadCaptionsAsync(source)
       if (requestId !== loadRequest.current) return
-      const nextFormat = formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
+      // On a "X to Y" landing page keep Y selected; otherwise pick the first format that differs.
+      const nextFormat = preferredFormat && preferredFormat !== parsed.format
+        ? preferredFormat
+        : formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
       setLoaded({ name, size, sourceFormat: parsed.format, cues: parsed.cues, history: [], coalescing: false })
       setOutputFormat(nextFormat)
       setOutputName(cleanBaseName(name))
@@ -135,7 +177,7 @@ function App() {
     } finally {
       if (requestId === loadRequest.current) setLoadingName(null)
     }
-  }, [])
+  }, [preferredFormat])
 
   const processFile = useCallback((file?: File) => {
     if (!file) return
@@ -327,7 +369,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="./" aria-label="CaptionStack home">
+        <a className="brand" href="/" aria-label="CaptionStack home">
           <span className="brand-mark"><BrandIcon /></span>
           <span>CaptionStack</span>
         </a>
@@ -341,11 +383,15 @@ function App() {
 
       <main>
         <section className="hero-copy" aria-labelledby="page-title">
-          <p className="eyebrow">CAPTION CONVERTER</p>
-          <h1 id="page-title">Your captions.<br /><em>Any format.</em></h1>
-          <p className="hero-description">Convert subtitle files in seconds. No uploads, no accounts, and nothing leaves your browser.</p>
+          <p className="eyebrow">{hero.eyebrow}</p>
+          <h1 id="page-title">{hero.title}</h1>
+          <p className="hero-description">{hero.description}</p>
           <div className="format-strip" aria-label="Supported formats">
-            {formats.map((format) => <span key={format.id}>{format.id.toUpperCase()}</span>)}
+            {formats.map((format) => (
+              <a key={format.id} href={routePath({ kind: 'format', format: format.id })} aria-current={route.kind === 'format' && route.format === format.id ? 'page' : undefined}>
+                {format.id.toUpperCase()}
+              </a>
+            ))}
           </div>
         </section>
 
@@ -490,7 +536,7 @@ function App() {
 
           <div className={`conversion-area${canPickFormat ? '' : ' is-disabled'}`} aria-disabled={!canPickFormat}>
             <div className="step-heading">
-              <span className="step-number">{isBatch ? 2 : 3}</span>
+              <span className="step-number">{loaded && !isBatch ? 3 : 2}</span>
               <div><h2>Choose an output format</h2><p>{isBatch ? 'Every file in the batch converts to this format.' : 'Select what you need on the other side.'}</p></div>
             </div>
             <div className="format-grid">
@@ -591,6 +637,8 @@ function App() {
           <div><Icon name="file" size={22} /><span><strong>8 formats</strong>Built for the caption formats you use.</span></div>
           <div><Icon name="download" size={22} /><span><strong>No limits</strong>Convert as often as you need.</span></div>
         </section>
+
+        <LandingContent route={route} />
       </main>
 
       <footer>
