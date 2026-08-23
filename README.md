@@ -6,7 +6,7 @@
   </a>
 </p>
 
-A growing collection of private, browser-based caption tools. CaptionStack currently reads, previews, and converts caption files without uploading them to a server.
+A growing collection of private, browser-based caption tools. CaptionStack currently reads, previews, edits, and converts caption files without uploading them to a server.
 
 **Live site:** [captionstack.app](https://captionstack.app/)
 
@@ -24,6 +24,15 @@ A growing collection of private, browser-based caption tools. CaptionStack curre
 | Plain text (`.txt`) | Yes | Yes |
 
 Plain-text imports receive three-second cue timings. Plain-text exports intentionally omit timing.
+
+## Editing cues
+
+After importing a file, open **Edit cues** to fix timings and text before exporting:
+
+- Edit each cue's start time, end time, and text inline.
+- Add, delete, split, merge, and reorder cues.
+- Invalid time ranges block export until fixed; overlapping cues are flagged as warnings but can still be exported.
+- The preview and downloaded file always reflect your edits, and everything stays in your browser.
 
 ## Local development
 

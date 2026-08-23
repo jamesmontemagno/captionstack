@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  formatTimestamp,
+  addCue,
   formats,
   getFormat,
+  hasBlockingErrors,
+  hasErrors,
+  mergeCue,
+  moveCue,
   parseCaptions,
+  removeCue,
   serializeCaptions,
-  type Cue,
+  splitCue,
+  toCues,
+  toEditableCues,
+  updateCue,
+  validateCues,
+  type CueError,
+  type EditableCue,
   type FormatId,
 } from './converter'
+import CaptionEditor from './CaptionEditor'
 import './App.css'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -74,7 +86,7 @@ interface LoadedFile {
   name: string
   size: number
   sourceFormat: FormatId
-  cues: Cue[]
+  cues: EditableCue[]
 }
 
 function App() {
@@ -84,6 +96,7 @@ function App() {
   const [outputName, setOutputName] = useState('')
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const [theme, setTheme] = useState('light')
 
   useEffect(() => {
@@ -97,9 +110,10 @@ function App() {
     try {
       const parsed = parseCaptions(content, name)
       const nextFormat = formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
-      setLoaded({ name, size, sourceFormat: parsed.format, cues: parsed.cues })
+      setLoaded({ name, size, sourceFormat: parsed.format, cues: toEditableCues(parsed.cues) })
       setOutputFormat(nextFormat)
       setOutputName(cleanBaseName(name))
+      setIsEditing(false)
       setError('')
     } catch (caught) {
       setLoaded(null)
@@ -120,13 +134,38 @@ function App() {
     }
   }, [processContent])
 
+  const cueErrors = useMemo<Map<string, CueError>>(
+    () => (loaded ? validateCues(loaded.cues) : new Map()),
+    [loaded],
+  )
+  const hasCueErrors = hasBlockingErrors(cueErrors)
+  const hasCueWarnings = !hasCueErrors && hasErrors(cueErrors)
+
+  // Cues that have been edited into an unparseable state can't be converted yet; if the
+  // user gets there, open the editor so the highlighted fields are actually visible.
+  useEffect(() => {
+    if (hasCueErrors) setIsEditing(true)
+  }, [hasCueErrors])
+
+  const numericCues = useMemo(
+    () => (loaded && !hasCueErrors ? toCues(loaded.cues) : null),
+    [loaded, hasCueErrors],
+  )
+
   const output = useMemo(
-    () => loaded ? serializeCaptions(loaded.cues, outputFormat) : '',
-    [loaded, outputFormat],
+    () => (numericCues ? serializeCaptions(numericCues, outputFormat) : ''),
+    [numericCues, outputFormat],
+  )
+
+  const mutateCues = useCallback(
+    (transform: (cues: EditableCue[]) => EditableCue[]) => {
+      setLoaded((current) => (current ? { ...current, cues: transform(current.cues) } : current))
+    },
+    [],
   )
 
   const handleDownload = () => {
-    if (!loaded) return
+    if (!loaded || !output) return
     const format = getFormat(outputFormat)
     const blob = new Blob([output], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -143,6 +182,7 @@ function App() {
     setLoaded(null)
     setError('')
     setOutputName('')
+    setIsEditing(false)
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -152,7 +192,8 @@ function App() {
     setTheme(nextTheme)
   }
 
-  const duration = loaded ? Math.max(...loaded.cues.map((cue) => cue.end)) : 0
+  const duration = numericCues && numericCues.length ? Math.max(...numericCues.map((cue) => cue.end)) : 0
+  const cueCount = loaded ? loaded.cues.length : 0
 
   return (
     <div className="app-shell">
@@ -220,7 +261,7 @@ function App() {
           ) : (
             <div className="loaded-file">
               <span className="file-icon"><Icon name="file" size={23} /></span>
-              <div className="file-primary"><strong>{loaded.name}</strong><span>{readableBytes(loaded.size)} · {loaded.cues.length} cues</span></div>
+              <div className="file-primary"><strong>{loaded.name}</strong><span>{readableBytes(loaded.size)} · {cueCount} cues</span></div>
               <span className="detected-format">{loaded.sourceFormat.toUpperCase()}</span>
               <button className="text-button" type="button" onClick={reset}><Icon name="reset" size={16} />Replace</button>
             </div>
@@ -228,9 +269,48 @@ function App() {
 
           {error && <div className="error-message" role="alert">{error}</div>}
 
+          {loaded && (
+            <div className="edit-area">
+              <div className="step-heading">
+                <span className="step-number">2</span>
+                <div><h2>Review and edit your cues</h2><p>Fix timings and text before you export. Nothing leaves your browser.</p></div>
+                <button
+                  className="text-button edit-toggle"
+                  type="button"
+                  aria-expanded={isEditing}
+                  onClick={() => setIsEditing((editing) => !editing)}
+                >
+                  {isEditing ? 'Hide editor' : 'Edit cues'}
+                </button>
+              </div>
+              {hasCueErrors && (
+                <div className="error-message" role="alert">
+                  Fix the highlighted cues before exporting. Cues with invalid times can’t be downloaded.
+                </div>
+              )}
+              {hasCueWarnings && (
+                <div className="warning-message" role="status">
+                  Some cues overlap the cue before them. You can still download, or open the editor to adjust the timings.
+                </div>
+              )}
+              {isEditing && (
+                <CaptionEditor
+                  cues={loaded.cues}
+                  errors={cueErrors}
+                  onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes))}
+                  onAdd={(index) => mutateCues((cues) => addCue(cues, index))}
+                  onRemove={(index) => mutateCues((cues) => removeCue(cues, index))}
+                  onMove={(index, direction) => mutateCues((cues) => moveCue(cues, index, direction))}
+                  onSplit={(index) => mutateCues((cues) => splitCue(cues, index))}
+                  onMerge={(index) => mutateCues((cues) => mergeCue(cues, index))}
+                />
+              )}
+            </div>
+          )}
+
           <div className={`conversion-area${loaded ? '' : ' is-disabled'}`} aria-disabled={!loaded}>
             <div className="step-heading">
-              <span className="step-number">2</span>
+              <span className="step-number">3</span>
               <div><h2>Choose an output format</h2><p>Select what you need on the other side.</p></div>
             </div>
             <div className="format-grid">
@@ -258,18 +338,18 @@ function App() {
                 <Icon name="arrow" size={22} />
                 <div><span>TO</span><strong>{outputFormat.toUpperCase()}</strong></div>
                 <div className="stats">
-                  <span><strong>{loaded.cues.length}</strong> cues</span>
+                  <span><strong>{cueCount}</strong> cues</span>
                   <span><strong>{durationLabel(duration)}</strong> runtime</span>
                   <span><strong>{readableBytes(new Blob([output]).size)}</strong> output</span>
                 </div>
               </div>
 
               <div className="preview">
-                <div className="preview-heading"><h3>Caption preview</h3><span>First {Math.min(3, loaded.cues.length)} cues</span></div>
+                <div className="preview-heading"><h3>Caption preview</h3><span>First {Math.min(3, cueCount)} cues</span></div>
                 {loaded.cues.slice(0, 3).map((cue, index) => (
-                  <div className="cue-row" key={`${cue.start}-${index}`}>
+                  <div className="cue-row" key={cue.id}>
                     <span>{index + 1}</span>
-                    <time>{formatTimestamp(cue.start).slice(0, -4)} → {formatTimestamp(cue.end).slice(0, -4)}</time>
+                    <time>{cue.start} → {cue.end}</time>
                     <p>{cue.text}</p>
                   </div>
                 ))}
@@ -281,7 +361,7 @@ function App() {
                   <input id="output-name" value={outputName} onChange={(event) => setOutputName(event.target.value)} />
                   <span>{getFormat(outputFormat).extension}</span>
                 </div>
-                <button className="primary-button" type="button" onClick={handleDownload}>
+                <button className="primary-button" type="button" onClick={handleDownload} disabled={hasCueErrors}>
                   <Icon name="download" size={20} />Download converted file
                 </button>
               </div>
