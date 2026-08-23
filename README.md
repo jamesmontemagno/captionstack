@@ -75,7 +75,17 @@ Use `npm test`, `npm run lint`, and `npm run build` to validate changes.
 3. Set **Source** to **GitHub Actions**.
 4. Push to `main` or run **Deploy CaptionStack to GitHub Pages** from the Actions tab.
 
-The workflow tests and builds the app, then publishes the `dist` directory. Vite uses relative asset paths, so the site works at both account and repository Pages URLs.
+The workflow tests and builds the app, then publishes the `dist` directory. Assets use root-relative paths (`base: '/'`) because the site is served from the `captionstack.app` custom domain; to deploy under a repository sub-path, set `base` in `vite.config.ts` and `SITE_URL` in `src/seo/routes.ts` accordingly.
+
+## Landing pages and SEO
+
+The build prerenders a static page for every route so search engines can crawl more than the homepage:
+
+- `/` — the converter and links to popular conversions and every format.
+- `/formats/<id>/` — one page per format (`/formats/srt/`, `/formats/vtt/`, …) with an explainer, a sample, what converts, and links to every conversion involving it.
+- `/convert/<from>-to-<to>/` — one page per ordered format pair (56 pages, e.g. `/convert/srt-to-vtt/`) that preselects the target format and includes how-to steps, format notes, and FAQs.
+
+`prerender.mjs` renders each route with `src/entry-server.tsx`, writes a unique `<title>`, meta description, canonical URL, and Open Graph/Twitter tags, emits `dist/404.html`, and generates `dist/sitemap.xml` from the same route list (`src/seo/routes.ts`). Page copy lives in `src/seo/formatInfo.ts` and `src/LandingContent.tsx`.
 
 ## License
 
