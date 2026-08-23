@@ -391,6 +391,16 @@ function App({ pathname = '/' }: AppProps) {
 
   const jumpToCue = useCallback((finding: QualityFinding) => jumpToCueId(finding.cueId), [jumpToCueId])
 
+  const findingsByCue = useMemo(() => {
+    const grouped = new Map<string, QualityFinding[]>()
+    for (const finding of report?.findings ?? []) {
+      const list = grouped.get(finding.cueId)
+      if (list) list.push(finding)
+      else grouped.set(finding.cueId, [finding])
+    }
+    return grouped
+  }, [report])
+
   // Media preview bridge: the player registers imperative controls; the editor drives them.
   const [mediaControls, setMediaControls] = useState<MediaControls | null>(null)
   const editorMedia = useMemo(() => {
@@ -724,6 +734,8 @@ function App({ pathname = '/' }: AppProps) {
                 <CaptionEditor
                   cues={loaded.cues}
                   errors={cueErrors}
+                  findings={findingsByCue}
+                  onFix={(finding) => finding.fix && mutateCues((cues) => applyFix(cues, finding.fix!))}
                   page={editorPage}
                   onPageChange={setEditorPage}
                   onUpdate={(index, changes) => mutateCues((cues) => updateCue(cues, index, changes), { coalesce: true })}

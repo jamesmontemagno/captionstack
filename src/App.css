@@ -1567,6 +1567,55 @@ h1 em {
   color: var(--cp-text-muted);
 }
 
+.editor-warning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-warning span {
+  flex: 1;
+}
+
+.editor-fix {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 0.4rem;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editor-fix:hover {
+  border-color: var(--cp-accent);
+  color: var(--cp-accent);
+}
+
+.editor-warning-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--cp-warning);
+  border-radius: 999px;
+  color: var(--cp-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.editor-warning-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cp-warning);
+}
+
 .editor-insert {
   display: inline-flex;
   align-items: center;
