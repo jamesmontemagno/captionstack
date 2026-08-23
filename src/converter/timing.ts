@@ -84,3 +84,32 @@ export function parseOffset(value: string): number | null {
   if (ms === null) return null
   return negative ? -ms : ms
 }
+
+type Timing = { start: number | null; end: number | null }
+
+/**
+ * Index of the cue covering `now`, or -1. Cue lists are almost always sorted by start, so a
+ * binary search on start narrows the candidates; a short backwards scan then handles the
+ * occasional overlap or out-of-order cue without a full O(n) pass per timeupdate.
+ */
+export function findActiveCue(timings: Timing[], now: number): number {
+  let low = 0
+  let high = timings.length - 1
+  let candidate = -1
+  while (low <= high) {
+    const middle = (low + high) >> 1
+    const start = timings[middle].start
+    if (start === null || start <= now) {
+      candidate = middle
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  for (let index = candidate, scanned = 0; index >= 0 && scanned < 8; index -= 1, scanned += 1) {
+    const { start, end } = timings[index]
+    if (start !== null && end !== null && now >= start && now < end) return index
+  }
+  return -1
+}
+

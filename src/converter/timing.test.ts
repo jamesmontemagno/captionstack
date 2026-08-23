@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { toEditableCues } from './edit'
-import { convertFrameRate, parseOffset, scaleCues, shiftCues, syncToAnchors } from './timing'
+import { convertFrameRate, findActiveCue, parseOffset, scaleCues, shiftCues, syncToAnchors } from './timing'
 
 const cues = () => toEditableCues([
   { start: 1000, end: 3000, text: 'One' },
@@ -87,5 +87,30 @@ describe('parseOffset', () => {
   it('rejects blanks and garbage', () => {
     expect(parseOffset('')).toBeNull()
     expect(parseOffset('abc')).toBeNull()
+  })
+})
+
+describe('findActiveCue', () => {
+  const timings = [
+    { start: 0, end: 1000 },
+    { start: 1000, end: 2000 },
+    { start: 1500, end: 5000 },
+    { start: 6000, end: 7000 },
+    { start: null, end: null },
+    { start: 8000, end: 9000 },
+  ]
+
+  it('finds the cue covering the time, including overlaps and gaps', () => {
+    expect(findActiveCue(timings, 500)).toBe(0)
+    expect(findActiveCue(timings, 1000)).toBe(1)
+    expect(findActiveCue(timings, 1800)).toBe(2)
+    expect(findActiveCue(timings, 3000)).toBe(2)
+    expect(findActiveCue(timings, 5500)).toBe(-1)
+    expect(findActiveCue(timings, 8500)).toBe(5)
+  })
+
+  it('handles empty lists and times before the first cue', () => {
+    expect(findActiveCue([], 100)).toBe(-1)
+    expect(findActiveCue([{ start: 500, end: 900 }], 100)).toBe(-1)
   })
 })
