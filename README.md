@@ -29,6 +29,15 @@ Plain-text imports receive three-second cue timings. Plain-text exports intentio
 
 No file? Click **Paste caption text** under the drop zone, or press **Ctrl/⌘+V** anywhere on an empty converter. The format is detected from the content (an SRT block, a WebVTT snippet, a YouTube transcript, JSON from an API…), and files on the clipboard are accepted too. Pasted captions default to the file name `pasted-captions`.
 
+## Transcripts with speakers
+
+Podcast and meeting transcript exports are recognised inside `.txt` (and pasted text) when most entries carry a timestamp:
+
+- **Blocks** — `00:14.08` / `Frank` / `text…` (speaker line optional), as produced by many podcast hosts.
+- **Inline** — `[00:00:04] Bob: text`, `00:04 Bob: text`, or `Bob (00:04): text`, with continuation lines.
+
+Each entry becomes a cue with its real start time (end = next start, or +3 s), and the speaker is kept as a `Name:` prefix. A banner above the editor lists the detected speakers and offers **Use dashes** (a leading `-` only when the speaker changes) or **Remove names**; both are Undo-able.
+
 ## The workspace
 
 Once a file is loaded the page switches to a two-pane workspace on the same URL (so landing pages keep working and nothing needs to reload):
@@ -63,11 +72,11 @@ Every imported or edited cue list is analyzed before export. The report above th
 | Check | Severity | One-click fix |
 | --- | --- | --- |
 | Valid time ranges | Error (blocks export) | — |
-| No overlapping cues | Warning | Trim the previous cue's end to this cue's start |
+| No overlapping cues | Warning | Trim the previous cue's end to this cue's start; if the source timestamps went backwards, move this cue's start to the previous end |
 | No empty cues | Warning | Remove the cue |
 | Clean whitespace | Warning | Trim edges, collapse spaces, drop blank lines |
-| Minimum duration (≥ 700 ms) | Warning | Extend to 1 s when the next cue leaves room |
-| Line length (≤ 42 chars) | Warning | Re-wrap into balanced lines; if it still won't fit, split the cue into 2–3 cues with timing shared by text length |
+| Minimum duration (≥ 700 ms) | Warning | Extend to 1 s when the next cue leaves room; otherwise merge with an immediately following cue when the text still fits |
+| Line length (≤ 42 chars) | Warning | Re-wrap into balanced lines; if it still won't fit, split the cue into as many cues as needed (timing shared by text length, never below 700 ms each) |
 | Line count (≤ 2 lines) | Warning | Same re-wrap / split as line length |
 | Reading speed (≤ 20 chars/s) | Warning | Extend the end when the next cue leaves room |
 

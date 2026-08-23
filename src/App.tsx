@@ -5,6 +5,8 @@ import {
   analyzeCuesAsync,
   applyAllFixes,
   applyFix,
+  applySpeakerStyle,
+  detectSpeakers,
   formats,
   formatTimestamp,
   getFormat,
@@ -424,6 +426,8 @@ function App({ pathname = '/' }: AppProps) {
     return { start, end: Math.min(total, start + EDITOR_PAGE_SIZE), pageCount }
   }, [loaded, editorPage])
 
+  const speakers = useMemo(() => (loaded ? detectSpeakers(loaded.cues) : null), [loaded])
+
   const findingsByCue = useMemo(() => {
     const grouped = new Map<string, QualityFinding[]>()
     for (const finding of report?.findings ?? []) {
@@ -666,6 +670,22 @@ function App({ pathname = '/' }: AppProps) {
                     onReplaceAll={(transform) => mutateCues(transform)}
                     onJump={jumpToCueId}
                   />
+                )}
+                {speakers && (
+                  <div className="speaker-banner" role="group" aria-label="Speaker labels">
+                    <div className="speaker-banner-text">
+                      <strong>Transcript with {speakers.names.length} {speakers.names.length === 1 ? 'speaker' : 'speakers'}</strong>
+                      <span>{speakers.names.join(', ')} · {speakers.labelled.toLocaleString()} of {cueCount.toLocaleString()} cues labelled</span>
+                    </div>
+                    <div className="speaker-banner-actions">
+                      <button type="button" className="tool-toggle" title="Replace names with a dash when the speaker changes" onClick={() => mutateCues((cues) => applySpeakerStyle(cues, 'dash'))}>
+                        Use dashes
+                      </button>
+                      <button type="button" className="tool-toggle" title="Remove speaker names from every cue" onClick={() => mutateCues((cues) => applySpeakerStyle(cues, 'none'))}>
+                        Remove names
+                      </button>
+                    </div>
+                  </div>
                 )}
                 {report ? (
                   <QualityReport

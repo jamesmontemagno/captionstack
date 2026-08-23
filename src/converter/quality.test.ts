@@ -59,13 +59,24 @@ describe('analyzeCues', () => {
     expect(byCheck(analyzeCues(fixed).findings, 'overlap')).toHaveLength(0)
   })
 
-  it('does not offer a trim when it would leave the previous cue with no duration', () => {
+  it('moves this cue to the previous end when trimming would leave the previous cue with no duration', () => {
     const editable = cues([
       { start: 3000, end: 4000, text: 'First.' },
       { start: 3000, end: 6000, text: 'Second.' },
     ])
     const [finding] = byCheck(analyzeCues(editable).findings, 'overlap')
-    expect(finding.fix).toBeUndefined()
+    expect(finding.fix).toEqual({ kind: 'start-at-previous-end', cueId: editable[1].id })
+    const fixed = applyFix(editable, finding.fix!)
+    expect(fixed[1].start).toBe('00:00:04.000')
+    expect(byCheck(analyzeCues(fixed).findings, 'overlap')).toHaveLength(0)
+  })
+
+  it('offers no overlap fix when shifting the start would leave this cue too short', () => {
+    const editable = cues([
+      { start: 3000, end: 4000, text: 'First.' },
+      { start: 3000, end: 4300, text: 'Second.' },
+    ])
+    expect(byCheck(analyzeCues(editable).findings, 'overlap')[0].fix).toBeUndefined()
   })
 
   it('flags empty cues and removes them when fixed', () => {
@@ -133,12 +144,16 @@ describe('analyzeCues', () => {
     expect(byCheck(report.findings, 'long-line')[0].fix).toBeUndefined()
   })
 
-  it('extends a too-short cue only when there is room before the next cue', () => {
+  it('extends a too-short cue when there is room, otherwise merges it with an adjacent next cue', () => {
     const crowded = cues([
       { start: 1000, end: 1300, text: 'Hi' },
       { start: 1500, end: 4000, text: 'Next.' },
     ])
-    expect(byCheck(analyzeCues(crowded).findings, 'short-duration')[0].fix).toBeUndefined()
+    const [crowdedFinding] = byCheck(analyzeCues(crowded).findings, 'short-duration')
+    expect(crowdedFinding.fix).toEqual({ kind: 'merge-next', cueId: crowded[0].id, text: 'Hi Next.' })
+    const merged = applyFix(crowded, crowdedFinding.fix!)
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({ id: crowded[0].id, start: '00:00:01.000', end: '00:00:04.000', text: 'Hi Next.' })
 
     const roomy = cues([
       { start: 1000, end: 1300, text: 'Hi' },
@@ -147,6 +162,32 @@ describe('analyzeCues', () => {
     const [finding] = byCheck(analyzeCues(roomy).findings, 'short-duration')
     expect(finding.fix).toEqual({ kind: 'extend-end', cueId: roomy[0].id, end: 2000 })
     expect(applyFix(roomy, finding.fix!)[0].end).toBe('00:00:02.000')
+  })
+
+  it('does not merge when the next cue is far away or the merged text would not fit', () => {
+    const gap = cues([{ start: 1000, end: 1300, text: 'Hi' }, { start: 1600, end: 1900, text: 'Next.' }])
+    // 300 ms gap is beyond the adjacency window.
+    expect(byCheck(analyzeCues(gap).findings, 'short-duration')[0].fix).toBeUndefined()
+    const big = cues([
+      { start: 1000, end: 1300, text: 'Hi' },
+      { start: 1300, end: 9000, text: 'This next cue already fills two full lines of forty-two characters each so merging fails.' },
+    ])
+    expect(byCheck(analyzeCues(big).findings, 'short-duration')[0].fix).toBeUndefined()
+  })
+
+  it('does not split a cue when the parts would be too short to read', () => {
+    const editable = cues([{ start: 0, end: 1200, text: 'This single line of caption text is far too long to read and cannot be wrapped into two lines.' }])
+    expect(byCheck(analyzeCues(editable).findings, 'long-line')[0].fix).toBeUndefined()
+  })
+
+  it('splits very long paragraphs into as many parts as needed', () => {
+    const words = Array.from({ length: 120 }, (_, index) => `word${index}`).join(' ')
+    const editable = cues([{ start: 0, end: 60000, text: words }])
+    const [finding] = byCheck(analyzeCues(editable).findings, 'long-line')
+    expect(finding.fix?.kind).toBe('split-cue')
+    const fixed = applyFix(editable, finding.fix!)
+    expect(fixed.length).toBeGreaterThan(3)
+    expect(analyzeCues(fixed).findings.filter((f) => f.check === 'long-line' || f.check === 'too-many-lines')).toEqual([])
   })
 
   it('flags fast reading speed and extends the cue when possible', () => {
@@ -206,5 +247,24 @@ describe('applyAllFixes', () => {
     const result = applyAllFixes(editable)
     expect(result.applied).toBe(0)
     expect(result.cues).toBe(editable)
+  })
+})
+
+describe('merge-next and speakers', () => {
+  it('never merges cues from different speakers', () => {
+    const editable = toEditableCues([
+      { start: 1000, end: 1400, text: 'James: yeah' },
+      { start: 1400, end: 3000, text: 'Frank: right, exactly' },
+    ])
+    expect(analyzeCues(editable).findings.find((finding) => finding.check === 'short-duration')?.fix).toBeUndefined()
+  })
+
+  it('merges the same speaker and drops the repeated label', () => {
+    const editable = toEditableCues([
+      { start: 1000, end: 1400, text: 'James: yeah' },
+      { start: 1400, end: 3000, text: 'James: right, exactly' },
+    ])
+    const finding = analyzeCues(editable).findings.find((f) => f.check === 'short-duration')
+    expect(finding?.fix).toMatchObject({ kind: 'merge-next', text: 'James: yeah right, exactly' })
   })
 })
