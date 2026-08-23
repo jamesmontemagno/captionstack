@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   addCue,
+  hasBlockingErrors,
+  hasErrors,
+  isBlockingError,
   mergeCue,
   moveCue,
   parseCaptions,
@@ -43,6 +46,12 @@ describe('cue validation', () => {
     const editable = updateCue(toEditableCues(baseCues), 0, { end: '00:00:00.500' })
     const errors = validateCues(editable)
     expect(errors.get(editable[0].id)?.end).toBeDefined()
+    expect(hasBlockingErrors(errors)).toBe(true)
+  })
+
+  it('accepts zero-duration cues, matching the parser', () => {
+    const editable = updateCue(toEditableCues(baseCues), 0, { end: '00:00:01.000' })
+    expect(validateCues(editable).size).toBe(0)
   })
 
   it('flags unparseable timestamps', () => {
@@ -50,9 +59,14 @@ describe('cue validation', () => {
     expect(validateCues(editable).get(editable[0].id)?.start).toBeDefined()
   })
 
-  it('flags overlapping cues', () => {
+  it('flags overlapping cues as a non-blocking warning', () => {
     const editable = updateCue(toEditableCues(baseCues), 1, { start: '00:00:02.000' })
-    expect(validateCues(editable).get(editable[1].id)?.overlap).toBeDefined()
+    const errors = validateCues(editable)
+    expect(errors.get(editable[1].id)?.overlap).toBeDefined()
+    expect(isBlockingError(errors.get(editable[1].id))).toBe(false)
+    expect(hasBlockingErrors(errors)).toBe(false)
+    expect(hasErrors(errors)).toBe(true)
+    expect(() => toCues(editable)).not.toThrow()
   })
 })
 

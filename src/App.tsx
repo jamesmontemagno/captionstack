@@ -3,6 +3,7 @@ import {
   addCue,
   formats,
   getFormat,
+  hasBlockingErrors,
   hasErrors,
   mergeCue,
   moveCue,
@@ -14,6 +15,7 @@ import {
   toEditableCues,
   updateCue,
   validateCues,
+  type CueError,
   type EditableCue,
   type FormatId,
 } from './converter'
@@ -132,11 +134,18 @@ function App() {
     }
   }, [processContent])
 
-  const cueErrors = useMemo(
+  const cueErrors = useMemo<Map<string, CueError>>(
     () => (loaded ? validateCues(loaded.cues) : new Map()),
     [loaded],
   )
-  const hasCueErrors = hasErrors(cueErrors)
+  const hasCueErrors = hasBlockingErrors(cueErrors)
+  const hasCueWarnings = !hasCueErrors && hasErrors(cueErrors)
+
+  // Cues that have been edited into an unparseable state can't be converted yet; if the
+  // user gets there, open the editor so the highlighted fields are actually visible.
+  useEffect(() => {
+    if (hasCueErrors) setIsEditing(true)
+  }, [hasCueErrors])
 
   const numericCues = useMemo(
     () => (loaded && !hasCueErrors ? toCues(loaded.cues) : null),
@@ -276,7 +285,12 @@ function App() {
               </div>
               {hasCueErrors && (
                 <div className="error-message" role="alert">
-                  Fix the highlighted cues before exporting. Invalid times and overlaps can’t be downloaded.
+                  Fix the highlighted cues before exporting. Cues with invalid times can’t be downloaded.
+                </div>
+              )}
+              {hasCueWarnings && (
+                <div className="warning-message" role="status">
+                  Some cues overlap the cue before them. You can still download, or open the editor to adjust the timings.
                 </div>
               )}
               {isEditing && (

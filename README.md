@@ -31,7 +31,7 @@ After importing a file, open **Edit cues** to fix timings and text before export
 
 - Edit each cue's start time, end time, and text inline.
 - Add, delete, split, merge, and reorder cues.
-- Invalid time ranges and overlapping cues are flagged inline and block export until fixed.
+- Invalid time ranges block export until fixed; overlapping cues are flagged as warnings but can still be exported.
 - The preview and downloaded file always reflect your edits, and everything stays in your browser.
 
 ## Local development

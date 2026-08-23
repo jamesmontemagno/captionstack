@@ -1,6 +1,8 @@
 export {
   addCue,
+  hasBlockingErrors,
   hasErrors,
+  isBlockingError,
   mergeCue,
   moveCue,
   removeCue,

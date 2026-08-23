@@ -11,9 +11,17 @@ export interface EditableCue {
 }
 
 export interface CueError {
+  /** Blocking: the start timestamp cannot be parsed or is negative. */
   start?: string
+  /** Blocking: the end timestamp cannot be parsed or is before the start. */
   end?: string
+  /** Warning only: the cue starts before the previous cue finishes. Export still works. */
   overlap?: string
+}
+
+/** Whether the error would prevent the cue from being converted back to numeric timings. */
+export function isBlockingError(error: CueError | undefined): boolean {
+  return Boolean(error?.start || error?.end)
 }
 
 const DEFAULT_CUE_DURATION = 2000
@@ -76,8 +84,8 @@ export function validateCues(cues: EditableCue[]): Map<string, CueError> {
 
     if (end === null) {
       error.end = 'Enter a valid time (for example 00:00:03.000).'
-    } else if (start !== null && end <= start) {
-      error.end = 'End time must come after the start time.'
+    } else if (start !== null && end < start) {
+      error.end = 'End time cannot come before the start time.'
     }
 
     if (error.start || error.end) {
@@ -100,6 +108,14 @@ export function validateCues(cues: EditableCue[]): Map<string, CueError> {
 
 export function hasErrors(errors: Map<string, CueError>): boolean {
   return errors.size > 0
+}
+
+/** True when at least one cue cannot be exported (unparseable or inverted timings). */
+export function hasBlockingErrors(errors: Map<string, CueError>): boolean {
+  for (const error of errors.values()) {
+    if (isBlockingError(error)) return true
+  }
+  return false
 }
 
 function newCue(start: number, end: number, text = ''): EditableCue {

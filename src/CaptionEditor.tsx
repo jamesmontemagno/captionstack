@@ -1,4 +1,4 @@
-import { type CueError, type EditableCue } from './converter'
+import { isBlockingError, type CueError, type EditableCue } from './converter'
 
 interface CaptionEditorProps {
   cues: EditableCue[]
@@ -34,28 +34,32 @@ function CaptionEditor({ cues, errors, onUpdate, onAdd, onRemove, onMove, onSpli
       <div className="editor-list">
         {cues.map((cue, index) => {
           const error = errors.get(cue.id)
+          const errorListId = `cue-errors-${cue.id}`
+          const isWarningOnly = Boolean(error) && !isBlockingError(error)
           return (
-            <div className={`editor-cue${error ? ' has-error' : ''}`} key={cue.id}>
+            <div className={`editor-cue${error ? (isWarningOnly ? ' has-warning' : ' has-error') : ''}`} key={cue.id}>
               <div className="editor-cue-head">
                 <span className="editor-cue-number">{index + 1}</span>
                 <div className="editor-times">
                   <label className="editor-time-field">
                     <span>Start</span>
                     <input
-                      className={error?.start ? 'is-invalid' : undefined}
+                      className={error?.start ? 'is-invalid' : error?.overlap ? 'is-warning' : undefined}
                       value={cue.start}
                       spellCheck={false}
                       aria-invalid={error?.start ? true : undefined}
+                      aria-describedby={error ? errorListId : undefined}
                       onChange={(event) => onUpdate(index, { start: event.target.value })}
                     />
                   </label>
                   <label className="editor-time-field">
                     <span>End</span>
                     <input
-                      className={error?.end || error?.overlap ? 'is-invalid' : undefined}
+                      className={error?.end ? 'is-invalid' : undefined}
                       value={cue.end}
                       spellCheck={false}
                       aria-invalid={error?.end ? true : undefined}
+                      aria-describedby={error ? errorListId : undefined}
                       onChange={(event) => onUpdate(index, { end: event.target.value })}
                     />
                   </label>
@@ -86,7 +90,7 @@ function CaptionEditor({ cues, errors, onUpdate, onAdd, onRemove, onMove, onSpli
                 onChange={(event) => onUpdate(index, { text: event.target.value })}
               />
               {error && (
-                <ul className="editor-errors" role="alert">
+                <ul id={errorListId} className={`editor-errors${isWarningOnly ? ' is-warning' : ''}`} role={isWarningOnly ? 'status' : 'alert'}>
                   {error.start && <li>{error.start}</li>}
                   {error.end && <li>{error.end}</li>}
                   {error.overlap && <li>{error.overlap}</li>}

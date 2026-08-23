@@ -306,6 +306,16 @@ h1 em {
   font-size: 13px;
 }
 
+.warning-message {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--cp-warning);
+  border-radius: 0.625rem;
+  background: var(--cp-surface-soft);
+  color: var(--cp-text);
+  font-size: 13px;
+}
+
 .conversion-area {
   margin-top: 32px;
   padding-top: 30px;
@@ -612,6 +622,10 @@ h1 em {
   border-color: var(--cp-danger);
 }
 
+.editor-cue.has-warning {
+  border-color: var(--cp-warning);
+}
+
 .editor-cue-head {
   display: flex;
   align-items: center;
@@ -674,6 +688,10 @@ h1 em {
   border-color: var(--cp-danger);
 }
 
+.editor-time-field input.is-warning {
+  border-color: var(--cp-warning);
+}
+
 .editor-cue-actions {
   display: flex;
   gap: 6px;
@@ -718,6 +736,10 @@ h1 em {
   padding-left: 18px;
   color: var(--cp-danger);
   font-size: 12px;
+}
+
+.editor-errors.is-warning {
+  color: var(--cp-text-muted);
 }
 
 .editor-insert {
