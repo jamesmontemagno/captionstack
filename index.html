@@ -32,6 +32,7 @@
         const param = new URLSearchParams(window.location.search).get("scoutTheme");
         let saved = null;
         try { saved = window.localStorage.getItem("captionstack:theme"); } catch {}
+        if (saved !== "dark" && saved !== "light") saved = null;
         const theme =
           param || saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         document.documentElement.setAttribute("data-theme", theme);

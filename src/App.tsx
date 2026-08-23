@@ -39,6 +39,11 @@ const MAX_HISTORY = 50
 const PASTED_NAME = 'pasted-captions'
 /** The full-output view shows at most this many characters; larger files are downloaded instead. */
 const FULL_OUTPUT_LIMIT = 2 * 1024 * 1024
+
+function readSavedFormat(): FormatId | null {
+  const saved = readPreference(STORAGE_KEYS.outputFormat)
+  return saved && isFormatId(saved) ? saved : null
+}
 const ACCEPTED_EXTENSIONS = formats.map((format) => format.extension).concat('.xml').join(',')
 const DEMO_CAPTIONS = `WEBVTT
 
@@ -161,7 +166,7 @@ function App({ pathname = '/' }: AppProps) {
     // Sync to the theme the inline head script picked before hydration. Both server and
     // client render 'light' first so the hydrated markup matches, then we reflect reality.
     const activeTheme = document.documentElement.dataset.theme
-    if (activeTheme && activeTheme !== theme) setTheme(activeTheme)
+    if ((activeTheme === 'dark' || activeTheme === 'light') && activeTheme !== theme) setTheme(activeTheme)
   }, [theme])
 
   // Remembered output format: applied once after hydration unless the page dictates a target.
@@ -170,8 +175,8 @@ function App({ pathname = '/' }: AppProps) {
     if (formatRestored.current) return
     formatRestored.current = true
     if (preferredFormat) return
-    const saved = readPreference(STORAGE_KEYS.outputFormat)
-    if (saved && isFormatId(saved)) setOutputFormat(saved)
+    const saved = readSavedFormat()
+    if (saved) setOutputFormat(saved)
   }, [preferredFormat])
 
   const chooseOutputFormat = useCallback((format: FormatId) => {
@@ -186,10 +191,13 @@ function App({ pathname = '/' }: AppProps) {
     try {
       const parsed = await loadCaptionsAsync(source)
       if (requestId !== loadRequest.current) return
-      // On a "X to Y" landing page keep Y selected; otherwise pick the first format that differs.
-      const nextFormat = preferredFormat && preferredFormat !== parsed.format
-        ? preferredFormat
-        : formats.find((format) => format.id !== parsed.format)?.id ?? 'srt'
+      // Target priority: the landing page's format, then the remembered choice, then the first
+      // format that differs from the source. A target equal to the source is skipped.
+      const saved = readSavedFormat()
+      const candidates: Array<FormatId | null> = [preferredFormat, saved]
+      const nextFormat = candidates.find((candidate) => candidate && candidate !== parsed.format)
+        ?? formats.find((format) => format.id !== parsed.format)?.id
+        ?? 'srt'
       setLoaded({ name, size, sourceFormat: parsed.format, cues: parsed.cues, history: [], coalescing: false })
       setOutputFormat(nextFormat)
       setOutputName(cleanBaseName(name))
@@ -427,7 +435,17 @@ function App({ pathname = '/' }: AppProps) {
   }
 
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copyTimer = useRef<number | null>(null)
   const [showFullOutput, setShowFullOutput] = useState(false)
+  const outputLineCount = useMemo(() => {
+    if (!serialized) return 0
+    let count = 1
+    for (let index = serialized.output.indexOf('\n'); index !== -1; index = serialized.output.indexOf('\n', index + 1)) count += 1
+    return count
+  }, [serialized])
+  const fullOutputText = useMemo(() => (serialized ? serialized.output.slice(0, FULL_OUTPUT_LIMIT) : ''), [serialized])
+
+  useEffect(() => () => { if (copyTimer.current) window.clearTimeout(copyTimer.current) }, [])
 
   const handleCopy = async () => {
     if (!cues || hasCueErrors) return
@@ -438,7 +456,8 @@ function App({ pathname = '/' }: AppProps) {
     } catch {
       setCopyState('failed')
     }
-    window.setTimeout(() => setCopyState('idle'), 2000)
+    if (copyTimer.current) window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopyState('idle'), 2000)
   }
 
   const duration = serialized?.duration ?? 0
@@ -735,7 +754,7 @@ function App({ pathname = '/' }: AppProps) {
                   <span>
                     {showFullOutput
                       ? serialized
-                        ? `${serialized.output.split('\n').length.toLocaleString()} lines${serialized.output.length > FULL_OUTPUT_LIMIT ? ` · showing the first ${readableBytes(FULL_OUTPUT_LIMIT)}` : ''}`
+                        ? `${outputLineCount.toLocaleString()} lines${serialized.output.length > FULL_OUTPUT_LIMIT ? ` · showing the first ${readableBytes(FULL_OUTPUT_LIMIT)}` : ''}`
                         : 'Preparing…'
                       : `First ${Math.min(3, cueCount)} cues`}
                     {' · '}
@@ -746,7 +765,7 @@ function App({ pathname = '/' }: AppProps) {
                 </div>
                 {showFullOutput ? (
                   <pre className="output-view" tabIndex={0} aria-label={`Converted ${outputFormat.toUpperCase()} output`}>
-                    {serialized ? serialized.output.slice(0, FULL_OUTPUT_LIMIT) : ''}
+                    {fullOutputText}
                   </pre>
                 ) : (
                   loaded.cues.slice(0, 3).map((cue, index) => (
