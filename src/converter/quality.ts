@@ -27,7 +27,7 @@ export type QualityFix =
   | { kind: 'rewrap'; cueId: string; text: string }
   /** Replace the cue with several shorter cues; timing is shared proportionally to text length. */
   | { kind: 'split-cue'; cueId: string; parts: string[] }
-  /** Move this cue's start forward to the previous cue's end (bad source timestamps). */
+  /** Move this cue after the previous cue while preserving its duration (bad source timestamps). */
   | { kind: 'start-at-previous-end'; cueId: string }
   /** Merge this cue with the next one when the combined text still fits the layout limits. */
   | { kind: 'merge-next'; cueId: string; text: string }
@@ -220,18 +220,28 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
     if (error?.overlap && index > 0 && start !== null) {
       const previousStart = starts[index - 1]
       const previousEnd = ends[index - 1]
-      // Trimming the previous cue is only safe when it still keeps a positive duration.
+      const duration = end !== null ? end - start : 0
+      const shiftedEnd = previousEnd !== null ? previousEnd + duration : null
+      // Prefer trimming only when the previous cue remains readable. Otherwise preserve both
+      // durations by moving this cue after it, provided that does not collide with the next cue.
       const canTrim = previousStart !== null && previousStart < start
-      // When the source timestamps went backwards, the previous cue starts after this one; the
-      // only order-preserving repair is to start this cue where the previous one ends.
-      const canShift = !canTrim && previousEnd !== null && end !== null && end - previousEnd >= QUALITY_THRESHOLDS.minDurationMs
+      const canTrimReadably = canTrim && start - previousStart >= QUALITY_THRESHOLDS.minDurationMs
+      const canShift = previousEnd !== null
+        && duration >= QUALITY_THRESHOLDS.minDurationMs
+        && shiftedEnd !== null
+        && (nextStart === null || shiftedEnd <= nextStart)
+      const fix: QualityFix | undefined = canTrimReadably || (canTrim && !canShift)
+        ? { kind: 'trim-previous', cueId: cue.id }
+        : canShift
+          ? { kind: 'start-at-previous-end', cueId: cue.id }
+          : undefined
       push({
         check: 'overlap',
         severity: 'warning',
         cueId: cue.id,
         cueIndex: index,
-        message: `Starts ${formatTimestamp(start)} but cue ${index} ends at ${previousEnd !== null ? formatTimestamp(previousEnd) : '?'}.${canShift ? ' Fix moves this cue’s start to that point.' : ''}`,
-        fix: canTrim ? { kind: 'trim-previous', cueId: cue.id } : canShift ? { kind: 'start-at-previous-end', cueId: cue.id } : undefined,
+        message: `Starts ${formatTimestamp(start)} but cue ${index} ends at ${previousEnd !== null ? formatTimestamp(previousEnd) : '?'}.${fix?.kind === 'start-at-previous-end' ? ' Fix moves this cue after the previous cue.' : ''}`,
+        fix,
       })
     }
 
@@ -308,7 +318,9 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
 
       if (duration < QUALITY_THRESHOLDS.minDurationMs) {
         const target = start + QUALITY_THRESHOLDS.targetDurationMs
-        let fix: QualityFix | undefined = roomToExtend(target) ? { kind: 'extend-end', cueId: cue.id, end: target } : undefined
+        const minimum = start + QUALITY_THRESHOLDS.minDurationMs
+        const extendedEnd = roomToExtend(target) ? target : roomToExtend(minimum) ? minimum : null
+        let fix: QualityFix | undefined = extendedEnd !== null ? { kind: 'extend-end', cueId: cue.id, end: extendedEnd } : undefined
         if (!fix) {
           // No room to extend: merging with the next cue is safe when the combined text still
           // fits two lines and the next cue follows immediately (a split utterance).
@@ -393,8 +405,12 @@ export function applyFix(cues: EditableCue[], fix: QualityFix): EditableCue[] {
       return cues.map((cue, position) => (position === index ? { ...cue, text: fix.text } : cue))
     case 'start-at-previous-end': {
       const previousEnd = index > 0 ? tryParse(cues[index - 1].end) : null
-      if (previousEnd === null) return cues
-      return cues.map((cue, position) => (position === index ? { ...cue, start: formatTimestamp(previousEnd) } : cue))
+      const start = tryParse(cues[index].start)
+      const end = tryParse(cues[index].end)
+      if (previousEnd === null || start === null || end === null) return cues
+      return cues.map((cue, position) => (position === index
+        ? { ...cue, start: formatTimestamp(previousEnd), end: formatTimestamp(previousEnd + end - start) }
+        : cue))
     }
     case 'merge-next': {
       const next = cues[index + 1]

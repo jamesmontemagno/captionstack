@@ -72,10 +72,10 @@ Every imported or edited cue list is analyzed before export. The report above th
 | Check | Severity | One-click fix |
 | --- | --- | --- |
 | Valid time ranges | Error (blocks export) | — |
-| No overlapping cues | Warning | Trim the previous cue's end to this cue's start; if the source timestamps went backwards, move this cue's start to the previous end |
+| No overlapping cues | Warning | Trim the previous cue's end to this cue's start; if that would make it too short, move this cue after it while preserving duration when the timeline has room |
 | No empty cues | Warning | Remove the cue |
 | Clean whitespace | Warning | Trim edges, collapse spaces, drop blank lines |
-| Minimum duration (≥ 700 ms) | Warning | Extend to 1 s when the next cue leaves room; otherwise merge with an immediately following cue when the text still fits |
+| Minimum duration (≥ 700 ms) | Warning | Extend to 1 s when possible, or at least 700 ms when space is tighter; otherwise merge with an immediately following cue when the text still fits |
 | Line length (≤ 42 chars) | Warning | Re-wrap into balanced lines; if it still won't fit, split the cue into as many cues as needed (timing shared by text length, never below 700 ms each) |
 | Line count (≤ 2 lines) | Warning | Same re-wrap / split as line length |
 | Reading speed (≤ 20 chars/s) | Warning | Extend the end when the next cue leaves room |
