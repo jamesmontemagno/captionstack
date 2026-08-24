@@ -59,7 +59,7 @@ describe('analyzeCues', () => {
     expect(byCheck(analyzeCues(fixed).findings, 'overlap')).toHaveLength(0)
   })
 
-  it('moves this cue to the previous end when trimming would leave the previous cue with no duration', () => {
+  it('moves this cue after the previous cue and preserves its duration when trimming would make the previous cue too short', () => {
     const editable = cues([
       { start: 3000, end: 4000, text: 'First.' },
       { start: 3000, end: 6000, text: 'Second.' },
@@ -68,13 +68,15 @@ describe('analyzeCues', () => {
     expect(finding.fix).toEqual({ kind: 'start-at-previous-end', cueId: editable[1].id })
     const fixed = applyFix(editable, finding.fix!)
     expect(fixed[1].start).toBe('00:00:04.000')
+    expect(fixed[1].end).toBe('00:00:07.000')
     expect(byCheck(analyzeCues(fixed).findings, 'overlap')).toHaveLength(0)
   })
 
-  it('offers no overlap fix when shifting the start would leave this cue too short', () => {
+  it('offers no overlap fix when there is not enough room to preserve this cue before the next one', () => {
     const editable = cues([
       { start: 3000, end: 4000, text: 'First.' },
-      { start: 3000, end: 4300, text: 'Second.' },
+      { start: 3000, end: 5000, text: 'Second.' },
+      { start: 5500, end: 7000, text: 'Third.' },
     ])
     expect(byCheck(analyzeCues(editable).findings, 'overlap')[0].fix).toBeUndefined()
   })
@@ -162,6 +164,17 @@ describe('analyzeCues', () => {
     const [finding] = byCheck(analyzeCues(roomy).findings, 'short-duration')
     expect(finding.fix).toEqual({ kind: 'extend-end', cueId: roomy[0].id, end: 2000 })
     expect(applyFix(roomy, finding.fix!)[0].end).toBe('00:00:02.000')
+  })
+
+  it('extends a short cue to the minimum duration when there is not room for the ideal duration', () => {
+    const editable = cues([
+      { start: 1000, end: 1300, text: 'Hi' },
+      { start: 1750, end: 4000, text: 'Next.' },
+    ])
+    const [finding] = byCheck(analyzeCues(editable).findings, 'short-duration')
+    expect(finding.fix).toEqual({ kind: 'extend-end', cueId: editable[0].id, end: 1700 })
+    const fixed = applyFix(editable, finding.fix!)
+    expect(byCheck(analyzeCues(fixed).findings, 'short-duration')).toHaveLength(0)
   })
 
   it('does not merge when the next cue is far away or the merged text would not fit', () => {
