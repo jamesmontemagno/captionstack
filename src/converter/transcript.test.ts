@@ -38,10 +38,10 @@ describe('transcript import', () => {
     expect(format).toBe('txt')
     expect(cues).toHaveLength(4)
     expect(cues[0]).toMatchObject({ start: 600, end: 14080, text: 'James: Welcome back, everyone, to Merge Conflict.' })
-    expect(cues[1]).toMatchObject({ start: 14080, end: 14980, text: 'Frank: thank' })
-    // A later entry whose timestamp regresses keeps a positive duration for its predecessor.
-    expect(cues[2]).toMatchObject({ start: 14980, end: 17980 })
-    expect(cues[3]).toMatchObject({ start: 14570, end: 17570, text: 'Frank: Oh, it\'s going very well.' })
+    expect(cues[1]).toMatchObject({ start: 14080, end: 14570, text: 'Frank: thank' })
+    // Entries are ordered chronologically even when simultaneous speakers appear out of file order.
+    expect(cues[2]).toMatchObject({ start: 14570, end: 14980, text: 'Frank: Oh, it\'s going very well.' })
+    expect(cues[3]).toMatchObject({ start: 14980, end: 17980, text: 'James: Frank Krueger. How\'s it going, buddy?' })
   })
 
   it('parses one-line [time] Speaker: text entries with continuation lines', () => {

@@ -331,13 +331,12 @@ export function looksLikeTranscript(content: string): boolean {
 function parseTranscript(entries: TranscriptEntry[]): Cue[] {
   // Untimed stragglers inherit the previous entry's time so ordering is preserved.
   let lastStart = 0
-  const timedEntries = entries.map((entry) => {
+  const timedEntries = entries.map((entry, sourceIndex) => {
     if (Number.isFinite(entry.start)) lastStart = entry.start
-    return { ...entry, start: Number.isFinite(entry.start) ? entry.start : lastStart }
-  })
+    return { ...entry, sourceIndex, start: Number.isFinite(entry.start) ? entry.start : lastStart }
+  }).sort((left, right) => left.start - right.start || left.sourceIndex - right.sourceIndex)
   return timedEntries.map((entry, index) => {
     const nextStart = timedEntries[index + 1]?.start
-    // Exports sometimes carry a later "start" slightly before the previous one; keep a positive duration.
     const end = nextStart !== undefined && nextStart > entry.start ? nextStart : entry.start + 3000
     return {
       start: entry.start,

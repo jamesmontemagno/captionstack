@@ -4,6 +4,7 @@ import {
   applyAllFixes,
   applyFix,
   cleanCueText,
+  splitTiming,
   toEditableCues,
   type QualityFinding,
 } from '.'
@@ -185,7 +186,7 @@ describe('analyzeCues', () => {
       { start: 1000, end: 1300, text: 'Hi' },
       { start: 1300, end: 9000, text: 'This next cue already fills two full lines of forty-two characters each so merging fails.' },
     ])
-    expect(byCheck(analyzeCues(big).findings, 'short-duration')[0].fix).toBeUndefined()
+    expect(byCheck(analyzeCues(big).findings, 'short-duration')[0].fix?.kind).toBe('expand-range')
   })
 
   it('does not split a cue when the parts would be too short to read', () => {
@@ -201,6 +202,16 @@ describe('analyzeCues', () => {
     const fixed = applyFix(editable, finding.fix!)
     expect(fixed.length).toBeGreaterThan(3)
     expect(analyzeCues(fixed).findings.filter((f) => f.check === 'long-line' || f.check === 'too-many-lines')).toEqual([])
+  })
+
+  it('balances every part of a long paragraph instead of leaving a tiny final segment', () => {
+    const text = Array.from({ length: 52 }, (_, index) => `word${index}`).join(' ')
+    const editable = cues([{ start: 0, end: 16000, text }])
+    const finding = byCheck(analyzeCues(editable).findings, 'long-line')[0]
+    expect(finding.fix?.kind).toBe('split-cue')
+    if (finding.fix?.kind !== 'split-cue') return
+    const durations = splitTiming(0, 16000, finding.fix.parts).map((part) => part.end - part.start)
+    expect(Math.min(...durations)).toBeGreaterThanOrEqual(700)
   })
 
   it('flags fast reading speed and extends the cue when possible', () => {
@@ -261,6 +272,20 @@ describe('applyAllFixes', () => {
     expect(result.applied).toBe(0)
     expect(result.cues).toBe(editable)
   })
+
+  it('rebalances a contiguous run when a distant cue has enough spare display time', () => {
+    const editable = cues([
+      { start: 0, end: 700, text: 'A: Fine.' },
+      { start: 700, end: 1000, text: 'B: Tiny.' },
+      { start: 1000, end: 1700, text: 'C: Okay.' },
+      { start: 1700, end: 5000, text: 'D: Later.' },
+    ])
+    expect(analyzeCues(editable).fixableCount).toBe(0)
+    const { cues: fixed } = applyAllFixes(editable)
+    expect(analyzeCues(fixed).findings).toEqual([])
+    expect(fixed[0].start).toBe('00:00:00.000')
+    expect(fixed[fixed.length - 1].end).toBe('00:00:05.000')
+  })
 })
 
 describe('merge-next and speakers', () => {
@@ -269,7 +294,10 @@ describe('merge-next and speakers', () => {
       { start: 1000, end: 1400, text: 'James: yeah' },
       { start: 1400, end: 3000, text: 'Frank: right, exactly' },
     ])
-    expect(analyzeCues(editable).findings.find((finding) => finding.check === 'short-duration')?.fix).toBeUndefined()
+    const fix = analyzeCues(editable).findings.find((finding) => finding.check === 'short-duration')?.fix
+    expect(fix?.kind).toBe('expand-range')
+    const fixed = applyFix(editable, fix!)
+    expect(fixed.map((cue) => cue.text)).toEqual(['James: yeah', 'Frank: right, exactly'])
   })
 
   it('merges the same speaker and drops the repeated label', () => {

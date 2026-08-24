@@ -31,6 +31,8 @@ export type QualityFix =
   | { kind: 'start-at-previous-end'; cueId: string }
   /** Merge this cue with the next one when the combined text still fits the layout limits. */
   | { kind: 'merge-next'; cueId: string; text: string }
+  /** Borrow surplus display time from adjacent cues without creating a new warning. */
+  | { kind: 'expand-range'; cueId: string; start: number; end: number }
 
 export interface QualityFinding {
   id: string
@@ -105,17 +107,59 @@ function readingSpeed(text: string, durationMs: number): number {
   return durationMs > 0 ? characters / (durationMs / 1000) : Number.POSITIVE_INFINITY
 }
 
+function requiredDuration(text: string): number {
+  const characters = cleanCueText(text).replace(/\s+/g, '').length
+  return Math.max(
+    QUALITY_THRESHOLDS.minDurationMs,
+    Math.ceil((characters / QUALITY_THRESHOLDS.maxCharsPerSecond) * 1000),
+  )
+}
+
+function expandedRange(
+  cues: EditableCue[],
+  index: number,
+  starts: Array<number | null>,
+  ends: Array<number | null>,
+  targetDuration: number,
+): { start: number; end: number } | null {
+  const start = starts[index]
+  const end = ends[index]
+  if (start === null || end === null || targetDuration <= end - start) return null
+
+  let needed = targetDuration - (end - start)
+  let expandedStart = start
+  let expandedEnd = end
+  const previousStart = starts[index - 1] ?? null
+  const previousEnd = ends[index - 1] ?? null
+  if (previousStart !== null && previousEnd === start) {
+    const available = Math.max(0, previousEnd - previousStart - requiredDuration(cues[index - 1].text))
+    const borrowed = Math.min(needed, available)
+    expandedStart -= borrowed
+    needed -= borrowed
+  }
+  const nextStart = starts[index + 1] ?? null
+  const nextEnd = ends[index + 1] ?? null
+  if (needed > 0 && nextStart === end && nextEnd !== null) {
+    const available = Math.max(0, nextEnd - nextStart - requiredDuration(cues[index + 1].text))
+    const borrowed = Math.min(needed, available)
+    expandedEnd += borrowed
+    needed -= borrowed
+  }
+  return needed === 0 ? { start: expandedStart, end: expandedEnd } : null
+}
+
 /**
  * Splits words into `count` groups with as-equal-as-possible character lengths, preferring to
  * break after sentence punctuation when a candidate boundary is close to the ideal point.
  */
 function balanceWords(words: string[], count: number): string[][] {
   if (count <= 1 || words.length <= count) return count <= 1 ? [words] : words.map((word) => [word])
-  const total = words.join(' ').length
   const groups: string[][] = []
   let cursor = 0
   for (let group = 1; group < count; group += 1) {
-    const target = (total * group) / count
+    const remainingLength = words.slice(cursor).join(' ').length
+    const remainingGroups = count - group + 1
+    const target = remainingLength / remainingGroups
     let best = cursor + 1
     let bestScore = Number.POSITIVE_INFINITY
     let length = -1
@@ -338,6 +382,8 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
             }
           }
         }
+        const expanded = fix ? null : expandedRange(cues, index, starts, ends, QUALITY_THRESHOLDS.minDurationMs)
+        if (expanded) fix = { kind: 'expand-range', cueId: cue.id, ...expanded }
         push({
           check: 'short-duration',
           severity: 'warning',
@@ -351,13 +397,20 @@ export function analyzeCues(cues: EditableCue[]): QualityReport {
         if (speed > QUALITY_THRESHOLDS.maxCharsPerSecond) {
           const characters = cleaned.replace(/\s+/g, '').length
           const target = start + Math.ceil((characters / QUALITY_THRESHOLDS.maxCharsPerSecond) * 1000)
+          const expanded = roomToExtend(target)
+            ? null
+            : expandedRange(cues, index, starts, ends, target - start)
           push({
             check: 'reading-speed',
             severity: 'warning',
             cueId: cue.id,
             cueIndex: index,
             message: `${speed.toFixed(1)} characters per second; ${QUALITY_THRESHOLDS.maxCharsPerSecond} or fewer is comfortable.`,
-            fix: roomToExtend(target) ? { kind: 'extend-end', cueId: cue.id, end: target } : undefined,
+            fix: roomToExtend(target)
+              ? { kind: 'extend-end', cueId: cue.id, end: target }
+              : expanded
+                ? { kind: 'expand-range', cueId: cue.id, ...expanded }
+                : undefined,
           })
         }
       }
@@ -419,6 +472,23 @@ export function applyFix(cues: EditableCue[], fix: QualityFix): EditableCue[] {
       const merged: EditableCue = { ...cues[index], end: end === null ? cues[index].end : formatTimestamp(end), text: fix.text }
       return [...cues.slice(0, index), merged, ...cues.slice(index + 2)]
     }
+    case 'expand-range': {
+      const oldStart = tryParse(cues[index].start)
+      const oldEnd = tryParse(cues[index].end)
+      if (oldStart === null || oldEnd === null) return cues
+      return cues.map((cue, position) => {
+        if (position === index) {
+          return { ...cue, start: formatTimestamp(fix.start), end: formatTimestamp(fix.end) }
+        }
+        if (position === index - 1 && tryParse(cue.end) === oldStart) {
+          return { ...cue, end: formatTimestamp(fix.start) }
+        }
+        if (position === index + 1 && tryParse(cue.start) === oldEnd) {
+          return { ...cue, start: formatTimestamp(fix.end) }
+        }
+        return cue
+      })
+    }
     case 'split-cue': {
       const cue = cues[index]
       const start = tryParse(cue.start)
@@ -446,6 +516,62 @@ function uniqueSplitId(sourceId: string, part: number, taken: Set<string>): stri
   return candidate
 }
 
+function rebalanceTimings(cues: EditableCue[]): EditableCue[] {
+  const parsed = cues.map((cue) => ({
+    start: tryParse(cue.start),
+    end: tryParse(cue.end),
+    required: requiredDuration(cue.text),
+  }))
+  let changed = false
+  const result = [...cues]
+
+  for (let first = 0; first < cues.length;) {
+    let last = first
+    while (
+      last + 1 < cues.length
+      && parsed[last].end !== null
+      && parsed[last].end === parsed[last + 1].start
+    ) {
+      last += 1
+    }
+
+    const groupStart = parsed[first].start
+    const groupEnd = parsed[last].end
+    if (last > first && groupStart !== null && groupEnd !== null) {
+      const totalRequired = parsed
+        .slice(first, last + 1)
+        .reduce((sum, cue) => sum + cue.required, 0)
+      if (totalRequired <= groupEnd - groupStart) {
+        const boundaries = new Array<number>(last - first + 2)
+        const latest = new Array<number>(last - first + 2)
+        boundaries[0] = groupStart
+        latest[latest.length - 1] = groupEnd
+        for (let offset = latest.length - 2; offset >= 0; offset -= 1) {
+          latest[offset] = latest[offset + 1] - parsed[first + offset].required
+        }
+        for (let offset = 1; offset < boundaries.length - 1; offset += 1) {
+          const original = parsed[first + offset].start!
+          const earliest = boundaries[offset - 1] + parsed[first + offset - 1].required
+          boundaries[offset] = Math.min(Math.max(original, earliest), latest[offset])
+        }
+        boundaries[boundaries.length - 1] = groupEnd
+
+        for (let offset = 0; offset <= last - first; offset += 1) {
+          const index = first + offset
+          const start = formatTimestamp(boundaries[offset])
+          const end = formatTimestamp(boundaries[offset + 1])
+          if (result[index].start !== start || result[index].end !== end) {
+            result[index] = { ...result[index], start, end }
+            changed = true
+          }
+        }
+      }
+    }
+    first = last + 1
+  }
+  return changed ? result : cues
+}
+
 /**
  * Applies every safe fix, re-analyzing after each one because fixes can shift indices
  * (removing a cue) or resolve neighbouring findings (trimming an overlap).
@@ -455,7 +581,13 @@ export function applyAllFixes(cues: EditableCue[]): { cues: EditableCue[]; appli
   let applied = 0
   for (let iteration = 0; iteration < QUALITY_CHECK_IDS.length * 4; iteration += 1) {
     const fixes = analyzeCues(current).findings.flatMap((finding) => (finding.fix ? [finding.fix] : []))
-    if (fixes.length === 0) break
+    if (fixes.length === 0) {
+      const rebalanced = rebalanceTimings(current)
+      if (rebalanced === current) break
+      current = rebalanced
+      applied += 1
+      continue
+    }
     // Fixes that touch distinct cues are independent, so apply one batch per analysis pass.
     // Neighbour-touching fixes (trim/shift against the previous cue, merge with the next) reserve both.
     const touched = new Set<string>()
@@ -466,6 +598,8 @@ export function applyAllFixes(cues: EditableCue[]): { cues: EditableCue[]; appli
       if (index === -1) continue
       const affected = fix.kind === 'trim-previous' || fix.kind === 'start-at-previous-end'
         ? [fix.cueId, ids[index - 1]]
+        : fix.kind === 'expand-range'
+          ? [fix.cueId, ids[index - 1], ids[index + 1]]
         : fix.kind === 'merge-next'
           ? [fix.cueId, ids[index + 1]]
           : [fix.cueId]
