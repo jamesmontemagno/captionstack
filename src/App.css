@@ -337,11 +337,87 @@ main:has(> .workspace) {
   font-variant-numeric: tabular-nums;
 }
 
-.pane-output .media-panel {
+.pane-output .media-panel,
+.original-pane {
   margin: 0;
   border: 0;
   border-radius: 0;
   overflow: auto;
+}
+
+.original-pane {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  padding: 16px;
+  background: var(--cp-bg-elevated);
+}
+
+.original-drop {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 1.5px dashed var(--cp-border-strong, var(--cp-border));
+  border-radius: 0.75rem;
+  background: var(--cp-surface);
+  color: var(--cp-text-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.original-drop strong {
+  color: var(--cp-text);
+  font-size: 14px;
+}
+
+.original-drop span {
+  max-width: 360px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.original-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--cp-text-muted);
+  font-size: 12px;
+}
+
+.original-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.original-meta strong {
+  color: var(--cp-text);
+}
+
+.original-code {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
 }
 
 .output-pane {

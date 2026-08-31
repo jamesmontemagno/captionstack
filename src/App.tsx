@@ -34,6 +34,7 @@ import QualityReport from './QualityReport'
 import TimingPanel from './TimingPanel'
 import FindReplacePanel from './FindReplacePanel'
 import MediaPreview, { type MediaControls } from './MediaPreview'
+import OriginalPane from './OriginalPane'
 import OutputPane from './OutputPane'
 import BatchPanel from './BatchPanel'
 import { buildBatchZip, cleanBaseName, MAX_FILE_SIZE, useBatch, zipFileName } from './batch'
@@ -162,8 +163,9 @@ function App({ pathname = '/' }: AppProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [activeTool, setActiveTool] = useState<'timing' | 'replace' | 'media' | null>(null)
-  const [rightPane, setRightPane] = useState<'output' | 'media'>('output')
+  const [rightPane, setRightPane] = useState<'output' | 'media' | 'original'>('output')
   const [mobilePane, setMobilePane] = useState<'cues' | 'output'>('cues')
+  const [originalFile, setOriginalFile] = useState<{ name: string; size: number; content: string } | null>(null)
   const [activeCueId, setActiveCueId] = useState<string | null>(null)
   // Mirrors the CSS breakpoint that stacks the panes, so hidden media can be paused.
   const [isNarrow, setIsNarrow] = useState(false)
@@ -258,6 +260,7 @@ function App({ pathname = '/' }: AppProps) {
       loadRequest.current += 1
       setLoadingName(null)
       setLoaded(null)
+      setOriginalFile(null)
       setError('')
       addFiles(files)
       return
@@ -497,6 +500,7 @@ function App({ pathname = '/' }: AppProps) {
   const reset = () => {
     loadRequest.current += 1
     setLoaded(null)
+    setOriginalFile(null)
     setLoadingName(null)
     setError('')
     setOutputName('')
@@ -731,6 +735,9 @@ function App({ pathname = '/' }: AppProps) {
                     <button type="button" aria-pressed={rightPane === 'media'} className={rightPane === 'media' ? 'is-active' : undefined} onClick={() => setRightPane('media')}>
                       <Icon name="media" size={15} />Media preview
                     </button>
+                    <button type="button" aria-pressed={rightPane === 'original'} className={rightPane === 'original' ? 'is-active' : undefined} onClick={() => setRightPane('original')}>
+                      <Icon name="file" size={15} />Original
+                    </button>
                   </div>
                   {rightPane === 'output' && serialized && (
                     <span className="pane-meta">{outputLineCount.toLocaleString()} lines · {readableBytes(new Blob([serialized.output]).size)}</span>
@@ -747,7 +754,7 @@ function App({ pathname = '/' }: AppProps) {
                     activeCueId={activeCueId}
                     onJump={jumpToCueId}
                   />
-                ) : (
+                ) : rightPane === 'media' ? (
                   <MediaPreview
                     cues={loaded.cues}
                     cuesAreValid={!hasCueErrors}
@@ -755,6 +762,8 @@ function App({ pathname = '/' }: AppProps) {
                     onControls={setMediaControls}
                     onJump={jumpToCueId}
                   />
+                ) : (
+                  <OriginalPane file={originalFile} onFile={setOriginalFile} />
                 )}
               </aside>
             </div>
