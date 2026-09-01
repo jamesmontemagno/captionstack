@@ -42,10 +42,17 @@ import LandingContent from './LandingContent'
 import { FORMAT_INFO } from './seo/formatInfo'
 import { matchRoute, routePath, type Route } from './seo/routes'
 import { copyText, readPreference, STORAGE_KEYS, writePreference } from './preferences'
+import { deleteSavedCaption, listSavedCaptions, saveCaption, type SavedCaption } from './savedCaptions'
 import './App.css'
 
 const MAX_HISTORY = 50
 const PASTED_NAME = 'pasted-captions'
+
+function createSavedId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `saved-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+}
 
 function readSavedFormat(): FormatId | null {
   const saved = readPreference(STORAGE_KEYS.outputFormat)
@@ -73,12 +80,13 @@ function BrandIcon() {
   )
 }
 
-function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy' | 'search' | 'media'; size?: number }) {
+function Icon({ name, size = 20 }: { name: 'upload' | 'file' | 'arrow' | 'download' | 'save' | 'shield' | 'moon' | 'sun' | 'check' | 'reset' | 'spinner' | 'edit' | 'clock' | 'copy' | 'search' | 'media'; size?: number }) {
   const paths = {
     upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
     file: <><path d="M6 2.75h7l5 5V21.25H6z" /><path d="M13 2.75v5h5M9 13h6M9 17h6" /></>,
     arrow: <><path d="M5 12h14M14 7l5 5-5 5" /></>,
     download: <><path d="M12 4v12m0 0 4-4m-4 4-4-4" /><path d="M5 20h14" /></>,
+    save: <><path d="M5 4h12l2 2v14H5z" /><path d="M8 4v6h8V4M8 20v-6h8v6" /></>,
     shield: <><path d="M12 3l7 3v5c0 4.5-2.7 8.2-7 10-4.3-1.8-7-5.5-7-10V6z" /><path d="M9 12l2 2 4-4" /></>,
     moon: <path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z" />,
     sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" /></>,
@@ -108,6 +116,7 @@ function durationLabel(milliseconds: number): string {
 }
 
 interface LoadedFile {
+  savedId?: string
   name: string
   size: number
   sourceFormat: FormatId
@@ -180,6 +189,9 @@ function App({ pathname = '/' }: AppProps) {
   const [theme, setTheme] = useState('light')
   const [loadingName, setLoadingName] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [savedCaptions, setSavedCaptions] = useState<SavedCaption[]>([])
+  const [isSavedPickerOpen, setIsSavedPickerOpen] = useState(false)
   // Monotonic counters so a slow worker reply for a superseded request is ignored.
   const loadRequest = useRef(0)
   const serializeRequest = useRef(0)
@@ -190,6 +202,19 @@ function App({ pathname = '/' }: AppProps) {
     const activeTheme = document.documentElement.dataset.theme
     if ((activeTheme === 'dark' || activeTheme === 'light') && activeTheme !== theme) setTheme(activeTheme)
   }, [theme])
+
+  useEffect(() => {
+    void listSavedCaptions().then(setSavedCaptions).catch(() => setSavedCaptions([]))
+  }, [])
+
+  useEffect(() => {
+    if (!isSavedPickerOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSavedPickerOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isSavedPickerOpen])
 
   // Remembered output format: applied once after hydration unless the page dictates a target.
   const formatRestored = useRef(false)
@@ -497,6 +522,57 @@ function App({ pathname = '/' }: AppProps) {
     }
   }
 
+  const loadSaved = useCallback((saved: SavedCaption) => {
+    setIsSavedPickerOpen(false)
+    loadRequest.current += 1
+    setLoaded({ savedId: saved.id, name: saved.name, size: saved.size, sourceFormat: saved.sourceFormat, cues: saved.cues, history: [], coalescing: false })
+    setOutputName(cleanBaseName(saved.name))
+    setOutputFormat(saved.outputFormat ?? (saved.sourceFormat === 'srt' ? 'vtt' : 'srt'))
+    setError('')
+    setIsEditing(false)
+    setActiveTool(null)
+    setEditorPage(0)
+    setMobilePane('cues')
+    setActiveCueId(null)
+  }, [])
+
+  const handleSave = async () => {
+    if (!loaded || isSaving) return
+    const defaultName = cleanBaseName(outputName.trim()) || cleanBaseName(loaded.name) || 'captions'
+    const name = window.prompt('Name this saved caption project', defaultName)
+    if (!name?.trim()) return
+    setIsSaving(true)
+    try {
+      const saved: SavedCaption = {
+        id: loaded.savedId ?? createSavedId(),
+        name: name.trim(),
+        sourceFormat: loaded.sourceFormat,
+        outputFormat,
+        cues: loaded.cues,
+        size: loaded.size,
+        updatedAt: Date.now(),
+      }
+      await saveCaption(saved)
+      setLoaded((current) => current ? { ...current, savedId: saved.id, name: saved.name } : current)
+      setSavedCaptions(await listSavedCaptions())
+      setError('')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not save captions in this browser.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDeleteSaved = async (saved: SavedCaption) => {
+    if (!window.confirm(`Delete saved captions “${saved.name}”?`)) return
+    try {
+      await deleteSavedCaption(saved.id)
+      setSavedCaptions((current) => current.filter((item) => item.id !== saved.id))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not delete saved captions.')
+    }
+  }
+
   const reset = () => {
     loadRequest.current += 1
     setLoaded(null)
@@ -616,6 +692,9 @@ function App({ pathname = '/' }: AppProps) {
                   {copyState === 'copied' ? 'Copied!' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
                 </button>
                 <div className="workspace-download">
+                  <button className="secondary-button" type="button" onClick={() => void handleSave()} disabled={isSaving} aria-busy={isSaving}>
+                    <Icon name="save" size={17} />{isSaving ? 'Saving…' : 'Save'}
+                  </button>
                   <div className="filename-input">
                     <input id="output-name" aria-label="File name" value={outputName} onChange={(event) => setOutputName(event.target.value)} />
                     <span>{getFormat(outputFormat).extension}</span>
@@ -769,6 +848,7 @@ function App({ pathname = '/' }: AppProps) {
             </div>
           </section>
         ) : (
+        <>
         <section className="converter-card" aria-label="Caption converter">
           <div className="step-heading">
             <span className="step-number">{batch.readyCount > 0 ? <Icon name="check" size={17} /> : '1'}</span>
@@ -842,6 +922,10 @@ function App({ pathname = '/' }: AppProps) {
               <div className="demo-row">
                 <span>Don’t have a file handy?</span>
                 <button type="button" disabled={Boolean(loadingName)} onClick={loadDemo}>Try a sample file</button>
+                {savedCaptions.length > 0 && <>
+                  <span aria-hidden="true">·</span>
+                  <button className="saved-open-button" type="button" disabled={Boolean(loadingName)} onClick={() => setIsSavedPickerOpen(true)}><Icon name="save" size={15} />Open saved project</button>
+                </>}
                 <span aria-hidden="true">·</span>
                 <button type="button" disabled={Boolean(loadingName)} aria-expanded={isPasting} onClick={() => setIsPasting((open) => !open)}>
                   {isPasting ? 'Cancel paste' : 'Paste caption text'}
@@ -934,6 +1018,27 @@ function App({ pathname = '/' }: AppProps) {
           )}
 
         </section>
+        </>
+        )}
+
+        {isSavedPickerOpen && (
+          <div className="saved-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsSavedPickerOpen(false) }}>
+            <section className="saved-picker" role="dialog" aria-modal="true" aria-labelledby="saved-picker-title">
+              <div className="saved-picker-head">
+                <div><p className="eyebrow">YOUR WORK</p><h2 id="saved-picker-title">Open saved captions</h2><p className="saved-picker-subtitle">Stored privately in this browser.</p></div>
+                <button type="button" className="saved-picker-close" aria-label="Close saved captions" onClick={() => setIsSavedPickerOpen(false)}>×</button>
+              </div>
+              <div className="saved-picker-list">
+                {savedCaptions.map((saved) => (
+                  <div className="saved-caption-row" key={saved.id}>
+                    <div className="saved-caption-open"><strong>{saved.name}</strong><span>{saved.sourceFormat.toUpperCase()} · {saved.cues.length.toLocaleString()} cues · {new Date(saved.updatedAt).toLocaleDateString()}</span></div>
+                    <button type="button" className="saved-caption-action" onClick={() => loadSaved(saved)}><Icon name="arrow" size={15} />Open</button>
+                    <button type="button" className="text-button is-danger-text" onClick={() => void handleDeleteSaved(saved)}>Delete</button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
         )}
 
         <section className="trust-row" aria-label="Privacy and compatibility details">
