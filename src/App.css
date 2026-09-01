@@ -367,18 +367,37 @@ main:has(> .workspace) {
   background: var(--cp-surface);
   color: var(--cp-text-muted);
   text-align: center;
-  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.original-drop.is-dragging {
+  border-color: var(--cp-accent);
+  background: var(--cp-accent-soft);
 }
 
 .original-drop strong {
   color: var(--cp-text);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .original-drop span {
   max-width: 360px;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.original-drop .primary-button {
+  margin-top: 8px;
+}
+
+.original-drop .original-drop-hint {
+  color: var(--cp-text);
+  font-weight: 650;
+}
+
+.original-drop small {
+  color: var(--cp-text-soft);
+  font-size: 11px;
 }
 
 .original-meta {

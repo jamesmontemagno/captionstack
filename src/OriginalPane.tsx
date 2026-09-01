@@ -22,6 +22,7 @@ function readableBytes(bytes: number): string {
 function OriginalPane({ file, onFile }: OriginalPaneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
 
   const chooseFile = async (candidate?: File | null) => {
     if (!candidate) return
@@ -42,16 +43,28 @@ function OriginalPane({ file, onFile }: OriginalPaneProps) {
     <section className="original-pane" aria-label="Untouched original caption file">
       {!file ? (
         <>
-          <button
-            type="button"
-            className="original-drop"
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => { event.preventDefault(); void chooseFile(event.dataTransfer.files[0]) }}
+          <div
+            className={`original-drop${isDragging ? ' is-dragging' : ''}`}
+            onDragEnter={(event) => { event.preventDefault(); setIsDragging(true) }}
+            onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }}
+            onDragLeave={(event) => {
+              event.preventDefault()
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false)
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              setIsDragging(false)
+              void chooseFile(event.dataTransfer.files[0])
+            }}
           >
-            <strong>Upload the untouched original</strong>
-            <span>Keep the source captions beside your translation. The file is opened locally and never uploaded.</span>
-          </button>
+            <strong>Untouched original</strong>
+            <span>Keep the source captions beside your updated captions for an easy comparison.</span>
+            <button type="button" className="primary-button" onClick={() => inputRef.current?.click()}>
+              Choose original file
+            </button>
+            <span className="original-drop-hint">or drag and drop a caption file here</span>
+            <small>The file is opened locally and never uploaded.</small>
+          </div>
           <input ref={inputRef} className="visually-hidden" type="file" accept=".srt,.vtt,.sbv,.lrc,.ttml,.xml,.json,.csv,.txt,text/*" onChange={(event) => { void chooseFile(event.target.files?.[0]) }} />
         </>
       ) : (
