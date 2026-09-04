@@ -452,7 +452,6 @@ main:has(> .workspace) {
 
 .original-cue-time {
   color: var(--cp-text-muted);
-  color: var(--cp-text);
   font-family: Consolas, "Courier New", Courier, monospace;
   font-size: 12px;
   font-variant-numeric: tabular-nums;

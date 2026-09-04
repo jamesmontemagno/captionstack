@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findClosestCueIndex } from './OriginalPane'
+import { findClosestCueIndex } from './originalCues'
 import type { EditableCue } from './converter'
 
 const cues: EditableCue[] = [

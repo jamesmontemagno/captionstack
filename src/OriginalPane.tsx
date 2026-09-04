@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { loadCaptionsAsync, parseTimestamp, type EditableCue } from './converter'
+import { loadCaptionsAsync, type EditableCue } from './converter'
+import { findClosestCueIndex } from './originalCues'
 
 interface OriginalFile {
   name: string
@@ -19,19 +20,6 @@ function readableBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-export function findClosestCueIndex(cues: EditableCue[], targetTimeMs: number): number {
-  let closestIndex = -1
-  let closestDistance = Number.POSITIVE_INFINITY
-  cues.forEach((cue, index) => {
-    const distance = Math.abs(parseTimestamp(cue.start) - targetTimeMs)
-    if (distance < closestDistance) {
-      closestIndex = index
-      closestDistance = distance
-    }
-  })
-  return closestIndex
 }
 
 function OriginalPane({ file, onFile, targetTimeMs }: OriginalPaneProps) {
