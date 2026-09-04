@@ -466,6 +466,16 @@ function App({ pathname = '/' }: AppProps) {
     return grouped
   }, [report])
 
+  const activeCueTimeMs = useMemo(() => {
+    const activeCue = loaded?.cues.find((cue) => cue.id === activeCueId)
+    if (!activeCue) return null
+    try {
+      return parseTimestamp(activeCue.start)
+    } catch {
+      return null
+    }
+  }, [loaded, activeCueId])
+
   // Media preview bridge: the player registers imperative controls; the editor drives them.
   const [mediaControls, setMediaControls] = useState<MediaControls | null>(null)
   const editorMedia = useMemo(() => {
@@ -842,7 +852,7 @@ function App({ pathname = '/' }: AppProps) {
                     onJump={jumpToCueId}
                   />
                 ) : (
-                  <OriginalPane file={originalFile} onFile={setOriginalFile} />
+                  <OriginalPane file={originalFile} onFile={setOriginalFile} targetTimeMs={activeCueTimeMs} />
                 )}
               </aside>
             </div>
