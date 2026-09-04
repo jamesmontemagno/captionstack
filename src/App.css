@@ -421,22 +421,54 @@ main:has(> .workspace) {
   color: var(--cp-text);
 }
 
-.original-code {
+.original-cue-list {
   flex: 1 1 auto;
   min-height: 0;
-  margin: 0;
-  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   overflow: auto;
+}
+
+.original-cue {
+  padding: 12px;
   border: 1px solid var(--cp-border);
-  border-radius: 0.625rem;
+  border-radius: 0.75rem;
   background: var(--cp-surface);
-  color: var(--cp-text);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.original-cue.is-active {
+  border-color: var(--cp-accent);
+  background: var(--cp-accent-soft);
+  box-shadow: 0 0 0 1px var(--cp-accent);
+}
+
+.original-cue-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.original-cue-time {
+  color: var(--cp-text-muted);
   font-family: Consolas, "Courier New", Courier, monospace;
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.original-cue p {
+  margin: 10px 0 0;
+  color: var(--cp-text);
+  font-size: 14px;
+  line-height: 1.5;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  tab-size: 2;
+}
+
+.original-status {
+  padding: 24px 0;
+  color: var(--cp-text-muted);
+  font-size: 13px;
 }
 
 .output-pane {

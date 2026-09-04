@@ -82,7 +82,7 @@ function CaptionEditor({ cues, errors, page, onPageChange, onUpdate, onAdd, onRe
           const timeDescribedBy = [error?.start && `${errorListId}-start`, error?.end && `${errorListId}-end`, error?.overlap && `${errorListId}-overlap`].filter(Boolean).join(' ') || undefined
           const textDescribedBy = warnings.map((finding) => `${errorListId}-${finding.check}`).join(' ') || undefined
           return (
-            <div id={`editor-cue-${cue.id}`} className={`editor-cue${tone ? ` ${tone}` : ''}`} key={cue.id} onFocusCapture={() => onFocusCue?.(cue.id)}>
+            <div id={`editor-cue-${cue.id}`} className={`editor-cue${tone ? ` ${tone}` : ''}`} key={cue.id} onClick={() => onFocusCue?.(cue.id)} onFocusCapture={() => onFocusCue?.(cue.id)}>
               <div className="editor-cue-head">
                 <span className="editor-cue-number">{index + 1}</span>
                 {!hasBlocking && warningCount > 0 && (

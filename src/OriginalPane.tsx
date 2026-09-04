@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { loadCaptionsAsync, type EditableCue } from './converter'
+import { findClosestCueIndex } from './originalCues'
 
 interface OriginalFile {
   name: string
@@ -9,6 +11,7 @@ interface OriginalFile {
 interface OriginalPaneProps {
   file: OriginalFile | null
   onFile: (file: OriginalFile) => void
+  targetTimeMs: number | null
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -19,10 +22,46 @@ function readableBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function OriginalPane({ file, onFile }: OriginalPaneProps) {
+function OriginalPane({ file, onFile, targetTimeMs }: OriginalPaneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
   const [isDragging, setIsDragging] = useState(false)
+  const [cues, setCues] = useState<EditableCue[] | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const activeRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!file) {
+      setCues(null)
+      return
+    }
+    let cancelled = false
+    setIsLoading(true)
+    setError('')
+    loadCaptionsAsync({ content: file.content, filename: file.name })
+      .then((result) => {
+        if (!cancelled) setCues(result.cues)
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setCues(null)
+          setError(caught instanceof Error ? caught.message : 'This original file could not be parsed.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [file])
+
+  const activeIndex = useMemo(
+    () => (cues && targetTimeMs !== null ? findClosestCueIndex(cues, targetTimeMs) : -1),
+    [cues, targetTimeMs],
+  )
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [activeIndex])
 
   const chooseFile = async (candidate?: File | null) => {
     if (!candidate) return
@@ -70,10 +109,32 @@ function OriginalPane({ file, onFile }: OriginalPaneProps) {
       ) : (
         <>
           <div className="original-meta">
-            <span><strong>{file.name}</strong> · {readableBytes(file.size)}</span>
+            <span>
+              <strong>{file.name}</strong> · {readableBytes(file.size)}
+              {cues && <> · {cues.length.toLocaleString()} cues</>}
+            </span>
             <button type="button" className="text-button" onClick={() => inputRef.current?.click()}>Replace original</button>
           </div>
-          <pre className="original-code">{file.content}</pre>
+          {isLoading ? (
+            <div className="original-status" role="status">Reading original captions…</div>
+          ) : cues ? (
+            <div className="original-cue-list" aria-label="Original caption cues">
+              {cues.map((cue, index) => (
+                <div
+                  key={cue.id}
+                  ref={index === activeIndex ? activeRef : undefined}
+                  className={`original-cue${index === activeIndex ? ' is-active' : ''}`}
+                  aria-current={index === activeIndex ? 'true' : undefined}
+                >
+                  <div className="original-cue-head">
+                    <span className="editor-cue-number">{index + 1}</span>
+                    <span className="original-cue-time">{cue.start} → {cue.end}</span>
+                  </div>
+                  <p>{cue.text}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <input ref={inputRef} className="visually-hidden" type="file" accept=".srt,.vtt,.sbv,.lrc,.ttml,.xml,.json,.csv,.txt,text/*" onChange={(event) => { void chooseFile(event.target.files?.[0]) }} />
         </>
       )}
